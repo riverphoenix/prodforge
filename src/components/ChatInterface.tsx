@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Message, ChatStreamEvent, Settings, ContextDocument } from '../lib/types';
-import { conversationsAPI, messagesAPI, tokenUsageAPI, modelsAPI, contextDocumentsAPI } from '../lib/ipc';
+import { Message, ChatStreamEvent, Settings, ContextDocument, LLMProvider } from '../lib/types';
+import { conversationsAPI, messagesAPI, tokenUsageAPI, contextDocumentsAPI, settingsAPI } from '../lib/ipc';
 import MarkdownRenderer from './MarkdownRenderer';
+import ModelSelector from './ModelSelector';
 
 interface ChatInterfaceProps {
   projectId: string;
@@ -37,13 +38,10 @@ export default function ChatInterface({
   );
   const [streamingMessage, setStreamingMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [fallbackProvider, setFallbackProvider] = useState<LLMProvider | null>(null);
   const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(new Set());
+  const [selectedProvider, setSelectedProvider] = useState<LLMProvider>('openai');
   const [selectedModel, setSelectedModel] = useState('gpt-5');
-  const [availableModels, setAvailableModels] = useState<string[]>([
-    'gpt-5',
-    'gpt-5-mini',
-    'gpt-5-nano',
-  ]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Context attachment state
@@ -81,28 +79,16 @@ export default function ChatInterface({
 
   // Fetch available models when API key is available
   useEffect(() => {
-    const fetchModels = async () => {
-      if (apiKey) {
-        console.log('🔍 Fetching available OpenAI models...');
-        try {
-          const models = await modelsAPI.list(apiKey);
-          console.log('✅ Fetched models:', models);
-          if (models && models.length > 0) {
-            setAvailableModels(models);
-            // If current selected model is not in the list, switch to first available
-            if (!models.includes(selectedModel)) {
-              setSelectedModel(models[0]);
-            }
-          }
-        } catch (error) {
-          console.error('❌ Failed to fetch models:', error);
-          // Keep default models on error
+    const loadDefaultProvider = async () => {
+      try {
+        const s = await settingsAPI.get();
+        if (s.default_provider) {
+          setSelectedProvider(s.default_provider as LLMProvider);
         }
-      }
+      } catch {}
     };
-
-    fetchModels();
-  }, [apiKey]); // Only run when apiKey changes
+    loadDefaultProvider();
+  }, []);
 
   // Load available context documents
   useEffect(() => {
@@ -195,6 +181,7 @@ export default function ChatInterface({
     setLoading(true);
     setStreamingMessage('');
     setError(null);
+    setFallbackProvider(null);
 
     try {
       // Build context from attachments
@@ -330,6 +317,7 @@ export default function ChatInterface({
           conversation_id: convId,
           api_key: apiKey,
           model: selectedModel,
+          provider: selectedProvider,
           max_tokens: 4096,
           system: systemPrompt,
         }),
@@ -414,7 +402,7 @@ export default function ChatInterface({
       // Update conversation stats and record token usage
       await Promise.all([
         conversationsAPI.updateStats(convId, totalTokens, cost),
-        tokenUsageAPI.record(convId, selectedModel, inputTokens, outputTokens, cost)
+        tokenUsageAPI.record(convId, selectedModel, inputTokens, outputTokens, cost, selectedProvider)
       ]);
       console.log('Conversation stats updated successfully');
     } catch (error) {
@@ -436,6 +424,15 @@ export default function ChatInterface({
       }
 
       setError(errorMessage);
+      setFallbackProvider(null);
+
+      try {
+        const providers = await settingsAPI.getAvailableProviders();
+        const configured = providers.filter(p => p.configured && p.id !== selectedProvider);
+        if (configured.length > 0) {
+          setFallbackProvider(configured[0].id);
+        }
+      } catch { /* ignore */ }
     } finally {
       setLoading(false);
     }
@@ -590,12 +587,31 @@ export default function ChatInterface({
                   <div className="text-xs font-medium text-red-400 mb-1">Error</div>
                   <div className="text-sm text-red-300">{error}</div>
                   <button
-                    onClick={() => setError(null)}
+                    onClick={() => { setError(null); setFallbackProvider(null); }}
                     className="mt-2 text-xs text-red-400 hover:text-red-300 underline"
                   >
                     Dismiss
                   </button>
                 </div>
+                {fallbackProvider && (
+                  <div className="mt-2 p-3 bg-codex-accent/10 border border-codex-accent/30 rounded-lg flex items-center justify-between">
+                    <span className="text-sm text-codex-text-secondary">
+                      Try with {fallbackProvider === 'openai' ? 'OpenAI' : fallbackProvider === 'anthropic' ? 'Anthropic' : fallbackProvider === 'google' ? 'Google' : 'Ollama'}?
+                    </span>
+                    <button
+                      onClick={() => {
+                        const fallbackModels: Record<string, string> = { openai: 'gpt-5', anthropic: 'claude-sonnet-4-5-20250514', google: 'gemini-2.5-pro', ollama: 'llama3' };
+                        setSelectedProvider(fallbackProvider);
+                        setSelectedModel(fallbackModels[fallbackProvider] || 'gpt-5');
+                        setError(null);
+                        setFallbackProvider(null);
+                      }}
+                      className="px-3 py-1.5 text-xs bg-codex-accent hover:bg-codex-accent-hover text-white rounded transition-colors"
+                    >
+                      Switch Provider
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -737,19 +753,15 @@ export default function ChatInterface({
           {/* Model selector + info row below input */}
           <div className="flex items-center justify-between mt-2 px-1">
             <div className="flex items-center gap-3">
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="bg-transparent text-xs text-codex-text-muted hover:text-codex-text-secondary cursor-pointer focus:outline-none"
-                disabled={loading}
-              >
-                {availableModels.map((m) => (
-                  <option key={m} value={m} className="bg-codex-surface text-codex-text-primary">
-                    {m}
-                  </option>
-                ))}
-              </select>
-              <span className="text-[10px] text-codex-text-muted">Medium</span>
+              <ModelSelector
+                selectedProvider={selectedProvider}
+                selectedModel={selectedModel}
+                onSelect={(provider, model) => {
+                  setSelectedProvider(provider);
+                  setSelectedModel(model);
+                }}
+                compact
+              />
             </div>
             <div className="text-[10px] text-codex-text-muted">
               Enter to send

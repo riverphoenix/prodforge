@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { Project, Conversation, Message, Settings, SettingsUpdate, TokenUsage, TokenUsageAggregate, ContextDocument, FrameworkOutput, Folder, SearchResult, CommandHistoryEntry, CommandResult, FrameworkDefinition, FrameworkCategory, SavedPrompt, PromptVariable, ImportPreview, ImportResult, BatchExportResult, ConflictAction, Workflow, WorkflowRun, WorkflowRunStep, ProjectInsight, CommitInfo, JiraProject, JiraExportResult, NotionPage, NotionExportResult, FileEntry } from './types';
+import { Project, Conversation, Message, Settings, SettingsUpdate, TokenUsage, TokenUsageAggregate, ContextDocument, FrameworkOutput, Folder, SearchResult, CommandHistoryEntry, CommandResult, FrameworkDefinition, FrameworkCategory, SavedPrompt, PromptVariable, ImportPreview, ImportResult, BatchExportResult, ConflictAction, Workflow, WorkflowRun, WorkflowRunStep, ProjectInsight, CommitInfo, JiraProject, JiraExportResult, NotionPage, NotionExportResult, FileEntry, LLMProvider, ProviderInfo } from './types';
 
 interface FrameworkDefRow {
   id: string;
@@ -134,8 +134,30 @@ export const settingsAPI = {
     return await invoke('get_decrypted_api_key');
   },
 
+  async getDecryptedAnthropicKey(): Promise<string | null> {
+    return await invoke('get_decrypted_anthropic_key');
+  },
+
+  async getDecryptedGoogleKey(): Promise<string | null> {
+    return await invoke('get_decrypted_google_key');
+  },
+
   async deleteApiKey(): Promise<void> {
     return await invoke('delete_api_key');
+  },
+
+  async getAvailableProviders(): Promise<ProviderInfo[]> {
+    return await invoke('get_available_providers');
+  },
+
+  async getDecryptedKeyForProvider(provider: LLMProvider): Promise<string | null> {
+    switch (provider) {
+      case 'openai': return this.getDecryptedApiKey();
+      case 'anthropic': return this.getDecryptedAnthropicKey();
+      case 'google': return this.getDecryptedGoogleKey();
+      case 'ollama': return null;
+      default: return null;
+    }
   },
 };
 
@@ -145,7 +167,8 @@ export const tokenUsageAPI = {
     model: string,
     inputTokens: number,
     outputTokens: number,
-    cost: number
+    cost: number,
+    provider?: string
   ): Promise<string> {
     return await invoke('record_token_usage', {
       conversationId,
@@ -153,6 +176,7 @@ export const tokenUsageAPI = {
       inputTokens,
       outputTokens,
       cost,
+      provider: provider || 'openai',
     });
   },
 
@@ -171,6 +195,18 @@ export const tokenUsageAPI = {
   async getAll(): Promise<TokenUsage[]> {
     return await invoke('get_all_token_usage');
   },
+
+  async getByProvider(startDate: string, endDate: string): Promise<unknown[]> {
+    return await invoke('get_usage_by_provider', { startDate, endDate });
+  },
+
+  async getByModel(startDate: string, endDate: string): Promise<unknown[]> {
+    return await invoke('get_usage_by_model', { startDate, endDate });
+  },
+
+  async exportCSV(startDate: string, endDate: string): Promise<string> {
+    return await invoke('export_usage_csv', { startDate, endDate });
+  },
 };
 
 // Python sidecar API (direct HTTP calls)
@@ -187,12 +223,31 @@ export const modelsAPI = {
       return data.models || [];
     } catch (error) {
       console.error('Error fetching models:', error);
-      // Return Frontier models as fallback (GPT-5 generation)
       return [
         'gpt-5',
         'gpt-5-mini',
         'gpt-5-nano',
       ];
+    }
+  },
+
+  async listByProvider(provider: LLMProvider, apiKey: string, ollamaUrl?: string): Promise<string[]> {
+    try {
+      const params = new URLSearchParams({ api_key: apiKey });
+      if (ollamaUrl) params.set('ollama_url', ollamaUrl);
+      const response = await fetch(`${SIDECAR_URL}/models/${provider}?${params}`);
+      if (!response.ok) throw new Error(`Failed to fetch ${provider} models`);
+      const data = await response.json();
+      return data.models || [];
+    } catch (error) {
+      console.error(`Error fetching ${provider} models:`, error);
+      const fallbacks: Record<string, string[]> = {
+        openai: ['gpt-5', 'gpt-5-mini', 'gpt-5-nano'],
+        anthropic: ['claude-sonnet-4-5-20250514', 'claude-haiku-4-5-20251001'],
+        google: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+        ollama: ['llama3', 'mistral', 'codellama'],
+      };
+      return fallbacks[provider] || [];
     }
   },
 };

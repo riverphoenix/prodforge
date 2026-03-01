@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AI PM IDE",
-  "version": "0.1.0",
-  "identifier": "com.dsotiriou.ai-pm-ide",
+  "productName": "PMKit",
+  "version": "1.0.0",
+  "identifier": "com.dsotiriou.pmkit",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "AI PM IDE",
+        "title": "PMKit",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
@@ -32,6 +32,17 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "dmg": {
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 480, "y": 170 },
+        "windowSize": { "width": 660, "height": 400 }
+      }
+    },
+    "category": "DeveloperTool",
+    "shortDescription": "AI-powered Product Management toolkit",
+    "longDescription": "PMKit is an AI-powered desktop toolkit for Product Managers. Generate frameworks, manage documents, run workflows, and chat with AI models from OpenAI, Anthropic, Google, and Ollama."
   }
 }

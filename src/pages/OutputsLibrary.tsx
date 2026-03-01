@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ask, save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
-import { frameworkOutputsAPI, frameworkDefsAPI, settingsAPI } from '../lib/ipc';
-import { FrameworkOutput, FrameworkDefinition, Settings } from '../lib/types';
+import { frameworkOutputsAPI, frameworkDefsAPI, settingsAPI, gitAPI } from '../lib/ipc';
+import { FrameworkOutput, FrameworkDefinition, Settings, LLMProvider } from '../lib/types';
 import MarkdownWithMermaid from '../components/MarkdownWithMermaid';
+import MarkdownEditor from '../components/MarkdownEditor';
+import SectionRegenerator from '../components/SectionRegenerator';
+import ModelSelector from '../components/ModelSelector';
 import ResizableDivider from '../components/ResizableDivider';
 import VersionHistory from '../components/VersionHistory';
 import ExportToJiraDialog from '../components/ExportToJiraDialog';
@@ -14,7 +17,7 @@ interface OutputsLibraryProps {
   onEdit?: (outputId: string) => void;
 }
 
-export default function OutputsLibrary({ projectId, onEdit: _onEdit }: OutputsLibraryProps) {
+export default function OutputsLibrary({ projectId }: OutputsLibraryProps) {
   const [outputs, setOutputs] = useState<FrameworkOutput[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOutput, setSelectedOutput] = useState<FrameworkOutput | null>(null);
@@ -26,6 +29,14 @@ export default function OutputsLibrary({ projectId, onEdit: _onEdit }: OutputsLi
   const [showJiraExport, setShowJiraExport] = useState(false);
   const [showNotionExport, setShowNotionExport] = useState(false);
   const [settings, setAppSettings] = useState<Settings | null>(null);
+
+  const [editMode, setEditMode] = useState(false);
+  const [showRefineChat, setShowRefineChat] = useState(false);
+  const [refineInput, setRefineInput] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
+  const [refineProvider, setRefineProvider] = useState<LLMProvider>('openai');
+  const [refineModel, setRefineModel] = useState('gpt-5');
+  const refineAbortRef = useRef<AbortController | null>(null);
 
   // Panel resize state
   const [listWidth, setListWidth] = useState(384); // 384px = 96 * 4 (w-96)
@@ -107,6 +118,84 @@ export default function OutputsLibrary({ projectId, onEdit: _onEdit }: OutputsLi
       console.log('✅ File saved successfully to:', filePath);
     } catch (err) {
       console.error('❌ Failed to save file:', err);
+    }
+  };
+
+  const handleContentChange = async (newContent: string) => {
+    if (!selectedOutput) return;
+    try {
+      const updated = await frameworkOutputsAPI.update(selectedOutput.id, selectedOutput.name, newContent);
+      setSelectedOutput({ ...selectedOutput, generated_content: newContent, updated_at: updated.updated_at });
+      try {
+        await gitAPI.commitOutput(projectId, selectedOutput.id, selectedOutput.name, newContent, `Edit: ${selectedOutput.name}`);
+      } catch { /* git commit is best-effort */ }
+    } catch (err) {
+      console.error('Failed to save edit:', err);
+    }
+  };
+
+  const handleRefine = async () => {
+    if (!selectedOutput || !refineInput.trim()) return;
+    setIsRefining(true);
+
+    try {
+      const apiKey = await settingsAPI.getDecryptedKeyForProvider(refineProvider);
+      const sett = await settingsAPI.get();
+      const abortController = new AbortController();
+      refineAbortRef.current = abortController;
+
+      const response = await fetch('http://localhost:8000/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: 'You are refining a PM document. Return the COMPLETE updated document in markdown format. Keep the same structure and headers.' },
+            { role: 'user', content: `Here is the current document:\n\n${selectedOutput.generated_content}\n\n---\n\nPlease refine it with this instruction: ${refineInput}` }
+          ],
+          model: refineModel,
+          api_key: apiKey || '',
+          provider: refineProvider,
+          ollama_url: sett.ollama_base_url || undefined,
+        }),
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No reader');
+
+      const decoder = new TextDecoder();
+      let newContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        for (const line of text.split('\n')) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.substring(6));
+              if (event.type === 'content_block_delta' && event.delta?.text) {
+                newContent += event.delta.text;
+              } else if (event.type === 'error') {
+                throw new Error(event.error);
+              }
+            } catch (e) { if (!(e instanceof SyntaxError)) throw e; }
+          }
+        }
+      }
+
+      if (newContent.trim()) {
+        await handleContentChange(newContent.trim());
+        await loadOutputs();
+      }
+      setRefineInput('');
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      console.error('Refinement failed:', err);
+    } finally {
+      setIsRefining(false);
+      refineAbortRef.current = null;
     }
   };
 
@@ -203,7 +292,7 @@ export default function OutputsLibrary({ projectId, onEdit: _onEdit }: OutputsLi
                   return (
                     <div
                       key={output.id}
-                      onClick={() => setSelectedOutput(output)}
+                      onClick={() => { setSelectedOutput(output); setEditMode(false); setShowRefineChat(false); }}
                       className={`p-3 rounded-lg cursor-pointer transition-colors ${
                         isSelected
                           ? 'bg-indigo-600/20 border border-indigo-500/50'
@@ -300,6 +389,22 @@ export default function OutputsLibrary({ projectId, onEdit: _onEdit }: OutputsLi
                       </button>
                     )}
                     <button
+                      onClick={() => { setEditMode(!editMode); setShowRefineChat(false); }}
+                      className={`px-3 py-1 text-xs transition-colors ${
+                        editMode ? 'text-codex-accent' : 'text-codex-text-secondary hover:text-codex-text-primary'
+                      }`}
+                    >
+                      {editMode ? 'Done' : 'Edit'}
+                    </button>
+                    <button
+                      onClick={() => { setShowRefineChat(!showRefineChat); }}
+                      className={`px-3 py-1 text-xs transition-colors ${
+                        showRefineChat ? 'text-codex-accent' : 'text-codex-text-secondary hover:text-codex-text-primary'
+                      }`}
+                    >
+                      Refine
+                    </button>
+                    <button
                       onClick={() => handleDelete(selectedOutput.id)}
                       className="px-3 py-1 text-xs text-red-400 hover:text-red-300 transition-colors"
                     >
@@ -320,9 +425,62 @@ export default function OutputsLibrary({ projectId, onEdit: _onEdit }: OutputsLi
                   </div>
                 )}
 
-                {/* Content - Scrollable area */}
-                <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }} className="p-6">
-                  <MarkdownWithMermaid content={selectedOutput.generated_content} />
+                {/* Content area */}
+                <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  {editMode ? (
+                    <MarkdownEditor
+                      content={selectedOutput.generated_content}
+                      onChange={handleContentChange}
+                    />
+                  ) : (
+                    <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }} className="p-6">
+                      <MarkdownWithMermaid content={selectedOutput.generated_content} />
+                    </div>
+                  )}
+
+                  {/* Section regenerator */}
+                  {!editMode && (
+                    <SectionRegenerator
+                      content={selectedOutput.generated_content}
+                      onContentUpdate={async (newContent) => {
+                        await handleContentChange(newContent);
+                        await loadOutputs();
+                      }}
+                    />
+                  )}
+
+                  {/* Refine chat drawer */}
+                  {showRefineChat && (
+                    <div className="flex-shrink-0 border-t border-codex-border bg-codex-surface/50 px-4 py-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-codex-text-muted font-medium">Refine with AI</span>
+                        <ModelSelector
+                          selectedProvider={refineProvider}
+                          selectedModel={refineModel}
+                          onSelect={(p, m) => { setRefineProvider(p); setRefineModel(m); }}
+                          compact
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={refineInput}
+                          onChange={(e) => setRefineInput(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleRefine()}
+                          placeholder="e.g. Make the competitive analysis more detailed..."
+                          className="flex-1 px-3 py-1.5 bg-codex-bg border border-codex-border rounded text-sm text-codex-text-primary placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
+                          disabled={isRefining}
+                        />
+                        <button
+                          onClick={handleRefine}
+                          disabled={isRefining || !refineInput.trim()}
+                          className="px-3 py-1.5 text-xs bg-codex-accent hover:bg-codex-accent-hover disabled:opacity-50 text-white rounded transition-colors"
+                        >
+                          {isRefining ? 'Refining...' : 'Refine'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (

@@ -3,11 +3,12 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { getFramework } from '../lib/frameworks';
 import { contextDocumentsAPI, frameworkOutputsAPI, settingsAPI, savedPromptsAPI } from '../lib/ipc';
-import { FrameworkDefinition, ContextDocument } from '../lib/types';
+import { FrameworkDefinition, ContextDocument, LLMProvider } from '../lib/types';
 import MarkdownWithMermaid from './MarkdownWithMermaid';
 import ResizableDivider from './ResizableDivider';
 import FrameworkCustomizer from './FrameworkCustomizer';
 import PromptPickerModal from './PromptPickerModal';
+import ModelSelector from './ModelSelector';
 
 interface FrameworkGeneratorProps {
   projectId: string;
@@ -29,14 +30,11 @@ export default function FrameworkGenerator({
   const [generatedContent, setGeneratedContent] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fallbackProvider, setFallbackProvider] = useState<LLMProvider | null>(null);
   const [outputName, setOutputName] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<LLMProvider>('openai');
   const [selectedModel, setSelectedModel] = useState('gpt-5');
-  const [availableModels] = useState<string[]>([
-    'gpt-5',
-    'gpt-5-mini',
-    'gpt-5-nano',
-  ]);
   const [apiKey, setApiKey] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -72,9 +70,13 @@ export default function FrameworkGenerator({
   useEffect(() => {
     const loadApiKey = async () => {
       try {
-        const key = await settingsAPI.getDecryptedApiKey();
+        const key = await settingsAPI.getDecryptedKeyForProvider(selectedProvider);
         if (key) {
           setApiKey(key);
+        }
+        const settings = await settingsAPI.get();
+        if (settings.default_provider) {
+          setSelectedProvider(settings.default_provider as LLMProvider);
         }
       } catch (err) {
         console.error('Failed to load API key:', err);
@@ -83,6 +85,22 @@ export default function FrameworkGenerator({
 
     loadApiKey();
   }, []);
+
+  useEffect(() => {
+    const updateKey = async () => {
+      if (selectedProvider === 'ollama') {
+        setApiKey('');
+        return;
+      }
+      try {
+        const key = await settingsAPI.getDecryptedKeyForProvider(selectedProvider);
+        setApiKey(key || '');
+      } catch {
+        setApiKey('');
+      }
+    };
+    updateKey();
+  }, [selectedProvider]);
 
   useEffect(() => {
     const loadFramework = async () => {
@@ -127,6 +145,7 @@ export default function FrameworkGenerator({
 
     setIsGenerating(true);
     setError(null);
+    setFallbackProvider(null);
     setGeneratedContent('');
 
     try {
@@ -250,7 +269,8 @@ export default function FrameworkGenerator({
           })),
           user_prompt: prompt,
           api_key: apiKey,
-          model: selectedModel
+          model: selectedModel,
+          provider: selectedProvider,
         })
       });
 
@@ -336,11 +356,19 @@ export default function FrameworkGenerator({
       console.error('❌ Generation error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(errorMessage);
+      setFallbackProvider(null);
 
-      // Show alert if API key is missing
-      if (!apiKey) {
-        alert('Please configure your OpenAI API key in Settings before generating frameworks.');
+      if (!apiKey && selectedProvider !== 'ollama') {
+        alert('Please configure your API key in Settings before generating frameworks.');
       }
+
+      try {
+        const providers = await settingsAPI.getAvailableProviders();
+        const configured = providers.filter(p => p.configured && p.id !== selectedProvider);
+        if (configured.length > 0) {
+          setFallbackProvider(configured[0].id);
+        }
+      } catch { /* ignore */ }
     } finally {
       setIsGenerating(false);
       abortControllerRef.current = null;
@@ -403,6 +431,7 @@ export default function FrameworkGenerator({
           conversation_id: 'refinement-' + Date.now(), // Temporary ID for refinement
           api_key: apiKey,
           model: selectedModel,
+          provider: selectedProvider,
           max_tokens: 100000
         })
       });
@@ -752,28 +781,43 @@ export default function FrameworkGenerator({
           {/* Generate Button */}
           <div className="flex-shrink-0 border-t border-codex-border p-4">
             {error && (
-              <div className="mb-3 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400">
-                {error}
+              <div className="mb-3">
+                <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400">
+                  {error}
+                </div>
+                {fallbackProvider && (
+                  <div className="mt-2 px-3 py-2 bg-codex-accent/10 border border-codex-accent/30 rounded flex items-center justify-between">
+                    <span className="text-xs text-codex-text-secondary">
+                      Try with {fallbackProvider === 'openai' ? 'OpenAI' : fallbackProvider === 'anthropic' ? 'Anthropic' : fallbackProvider === 'google' ? 'Google' : 'Ollama'}?
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSelectedProvider(fallbackProvider);
+                        const fallbackModels: Record<string, string> = { openai: 'gpt-5', anthropic: 'claude-sonnet-4-5-20250514', google: 'gemini-2.5-pro', ollama: 'llama3' };
+                        setSelectedModel(fallbackModels[fallbackProvider] || 'gpt-5');
+                        setError(null);
+                        setFallbackProvider(null);
+                      }}
+                      className="px-2 py-1 text-xs bg-codex-accent hover:bg-codex-accent-hover text-white rounded transition-colors"
+                    >
+                      Switch
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Model Selector */}
             <div className="mb-3 flex items-center gap-2">
               <label className="text-xs text-codex-text-secondary font-medium">Model:</label>
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={isGenerating}
-                className="flex-1 px-2 py-1.5 bg-codex-surface border border-codex-border rounded text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-codex-accent disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {availableModels.map((model) => (
-                  <option key={model} value={model}>
-                    {model === 'gpt-5' ? '🌟 GPT-5' :
-                     model === 'gpt-5-mini' ? '⚡ GPT-5 Mini' :
-                     model === 'gpt-5-nano' ? '💨 GPT-5 Nano' : model}
-                  </option>
-                ))}
-              </select>
+              <ModelSelector
+                selectedProvider={selectedProvider}
+                selectedModel={selectedModel}
+                onSelect={(provider, model) => {
+                  setSelectedProvider(provider);
+                  setSelectedModel(model);
+                }}
+              />
             </div>
 
             {isGenerating ? (

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="100%" style="stop-color:#764ba2"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:0.3"/>
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:0.1"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect x="0" y="0" width="1024" height="1024" rx="220" ry="220" fill="url(#bg)"/>
+  <!-- Subtle border -->
+  <rect x="8" y="8" width="1008" height="1008" rx="216" ry="216" fill="none" stroke="url(#accent)" stroke-width="3" opacity="0.4"/>
+  <!-- Inner glow ring -->
+  <circle cx="512" cy="460" r="260" fill="url(#glow)"/>
+  <!-- PM text - bold -->
+  <text x="512" y="520" font-family="SF Pro Display, -apple-system, Helvetica Neue, Arial, sans-serif" font-weight="800" font-size="320" fill="url(#accent)" text-anchor="middle" letter-spacing="-8">PM</text>
+  <!-- Kit text - lighter -->
+  <text x="512" y="720" font-family="SF Pro Display, -apple-system, Helvetica Neue, Arial, sans-serif" font-weight="300" font-size="160" fill="#a8b2d1" text-anchor="middle" letter-spacing="20">Kit</text>
+  <!-- Small AI indicator dot -->
+  <circle cx="710" cy="340" r="28" fill="#667eea"/>
+  <circle cx="710" cy="340" r="14" fill="#a78bfa"/>
+  <!-- Subtle grid pattern overlay -->
+  <g opacity="0.03">
+    <line x1="256" y1="100" x2="256" y2="924" stroke="white" stroke-width="1"/>
+    <line x1="512" y1="100" x2="512" y2="924" stroke="white" stroke-width="1"/>
+    <line x1="768" y1="100" x2="768" y2="924" stroke="white" stroke-width="1"/>
+    <line x1="100" y1="256" x2="924" y2="256" stroke="white" stroke-width="1"/>
+    <line x1="100" y1="512" x2="924" y2="512" stroke="white" stroke-width="1"/>
+    <line x1="100" y1="768" x2="924" y2="768" stroke="white" stroke-width="1"/>
+  </g>
+</svg>

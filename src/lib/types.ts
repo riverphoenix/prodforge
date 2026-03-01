@@ -58,6 +58,21 @@ export interface ChatStreamEvent {
   error?: string;
 }
 
+export type LLMProvider = 'openai' | 'anthropic' | 'google' | 'ollama';
+
+export interface ProviderInfo {
+  id: LLMProvider;
+  name: string;
+  configured: boolean;
+  models: string[];
+}
+
+export interface ModelOption {
+  provider: LLMProvider;
+  model: string;
+  label: string;
+}
+
 export interface Settings {
   id: string;
   api_key_encrypted?: string;
@@ -76,6 +91,11 @@ export interface Settings {
   jira_project_key?: string;
   notion_api_token_encrypted?: string;
   notion_parent_page_id?: string;
+  anthropic_api_key_encrypted?: string;
+  google_api_key_encrypted?: string;
+  ollama_base_url?: string;
+  default_provider?: string;
+  enabled_models?: string;
   created_at: number;
   updated_at: number;
 }
@@ -97,12 +117,18 @@ export interface SettingsUpdate {
   jira_project_key?: string;
   notion_api_token?: string;
   notion_parent_page_id?: string;
+  anthropic_api_key?: string;
+  google_api_key?: string;
+  ollama_base_url?: string;
+  default_provider?: string;
+  enabled_models?: string;
 }
 
 export interface TokenUsage {
   id: string;
   conversation_id: string;
   model: string;
+  provider: string;
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;

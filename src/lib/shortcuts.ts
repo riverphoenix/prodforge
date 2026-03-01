@@ -19,6 +19,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'toggle-terminal', keys: 'mod+`', label: '\u2318`', description: 'Toggle terminal panel', category: 'panel' },
   { id: 'toggle-sidebar', keys: 'mod+b', label: '\u2318B', description: 'Toggle sidebar', category: 'panel' },
   { id: 'search', keys: 'mod+f', label: '\u2318F', description: 'Search', category: 'action' },
+  { id: 'shortcuts-overlay', keys: 'mod+/', label: '\u2318/', description: 'Keyboard shortcuts', category: 'action' },
 ];
 
 export function parseShortcut(keys: string): { mod: boolean; key: string } {

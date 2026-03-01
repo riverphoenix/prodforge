@@ -4,10 +4,13 @@ import ThreadsPanel from './components/ThreadsPanel';
 import ProjectView from './pages/ProjectView';
 import Settings from './pages/Settings';
 import ResizableDivider from './components/ResizableDivider';
-import { projectsAPI, frameworkDefsAPI, savedPromptsAPI, frameworkOutputsAPI, foldersAPI } from './lib/ipc';
+import { projectsAPI, frameworkDefsAPI, savedPromptsAPI, frameworkOutputsAPI, foldersAPI, settingsAPI } from './lib/ipc';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import CommandPalette from './components/CommandPalette';
 import BottomPanel from './components/BottomPanel';
+import { ToastProvider } from './components/Toast';
+import ShortcutOverlay from './components/ShortcutOverlay';
+import SetupWizard from './components/SetupWizard';
 import { Command } from './lib/commandRegistry';
 import { FrameworkDefinition, SavedPrompt, FrameworkOutput, SearchResult } from './lib/types';
 
@@ -41,6 +44,8 @@ function App() {
     return saved ? parseInt(saved, 10) : DEFAULT_BOTTOM_PANEL_HEIGHT;
   });
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [currentModel, setCurrentModel] = useState<string>('gpt-5');
   const [welcomeInput, setWelcomeInput] = useState('');
   const [welcomeLoading, setWelcomeLoading] = useState(false);
@@ -57,6 +62,20 @@ function App() {
   const [searchLoading, setSearchLoading] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await settingsAPI.get();
+        if (!s.api_key_encrypted && !s.anthropic_api_key_encrypted && !s.google_api_key_encrypted) {
+          const projects = await projectsAPI.list();
+          if (!projects || projects.length === 0) {
+            setShowSetupWizard(true);
+          }
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   const handleProjectSelect = (projectId: string, tab: Tab = 'chat') => {
     setCurrentProjectId(projectId);
@@ -165,6 +184,7 @@ function App() {
     'toggle-terminal': () => setBottomPanelVisible(v => !v),
     'toggle-sidebar': () => setThreadsOpen(v => !v),
     'search': () => { setSearchOpen(v => !v); setTimeout(() => searchInputRef.current?.focus(), 100); },
+    'shortcuts-overlay': () => setShortcutsOpen(v => !v),
   }), [currentProjectId]);
 
   useKeyboardShortcuts(shortcutHandlers);
@@ -187,6 +207,10 @@ function App() {
   const hasProject = currentView === 'project' && !!currentProjectId;
 
   return (
+    <ToastProvider>
+    {showSetupWizard && (
+      <SetupWizard onComplete={() => setShowSetupWizard(false)} />
+    )}
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }} className="bg-codex-bg text-codex-text-primary">
       {/* Activity Bar */}
       <ActivityBar
@@ -374,7 +398,7 @@ function App() {
           ))}
           {!hasProject && (
             <span className="text-xs text-codex-text-muted">
-              {currentView === 'settings' ? 'Settings' : 'AI PM IDE'}
+              {currentView === 'settings' ? 'Settings' : 'PMKit'}
             </span>
           )}
 
@@ -552,7 +576,13 @@ function App() {
           onClose={() => setCommandPaletteOpen(false)}
         />
       )}
+
+      {/* Shortcut overlay */}
+      {shortcutsOpen && (
+        <ShortcutOverlay onClose={() => setShortcutsOpen(false)} />
+      )}
     </div>
+    </ToastProvider>
   );
 }
 

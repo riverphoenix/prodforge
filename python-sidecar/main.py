@@ -1,6 +1,6 @@
 """
-AI PM IDE - Python Sidecar Server
-FastAPI server for OpenAI integration and document processing
+PMKit - Python Sidecar Server
+FastAPI server for LLM integration and document processing
 """
 
 from fastapi import FastAPI, HTTPException, Request
@@ -14,13 +14,27 @@ import json
 import logging
 
 from openai_client import OpenAIClient
+from anthropic_client import AnthropicClient
+from google_client import GoogleClient
+from ollama_client import OllamaClient
 from framework_loader import get_framework
 from document_parser import parse_document, fetch_url_content, fetch_google_docs_content
+
+
+def get_client(provider: str, api_key: str, ollama_url: str = None):
+    """Create the appropriate LLM client based on provider"""
+    if provider == "anthropic":
+        return AnthropicClient(api_key=api_key)
+    elif provider == "google":
+        return GoogleClient(api_key=api_key)
+    elif provider == "ollama":
+        return OllamaClient(base_url=ollama_url or "http://localhost:11434")
+    return OpenAIClient(api_key=api_key)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="AI PM IDE Sidecar", version="0.1.0")
+app = FastAPI(title="PMKit Sidecar", version="1.0.0")
 
 # CORS middleware to allow Tauri frontend to connect
 app.add_middleware(
@@ -49,6 +63,8 @@ class ChatRequest(BaseModel):
     model: str = "gpt-5"
     max_tokens: int = 4096
     system: Optional[str] = None
+    provider: str = "openai"
+    ollama_url: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -85,6 +101,8 @@ class GenerateFrameworkRequest(BaseModel):
     user_prompt: str
     api_key: str
     model: str = "gpt-5"
+    provider: str = "openai"
+    ollama_url: Optional[str] = None
 
 
 @app.get("/")
@@ -92,7 +110,7 @@ async def root():
     """Health check endpoint"""
     return {
         "status": "ok",
-        "service": "AI PM IDE Sidecar",
+        "service": "PMKit Sidecar",
         "version": "0.1.0"
     }
 
@@ -120,16 +138,27 @@ async def list_models(api_key: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/models/{provider}")
+async def list_provider_models(provider: str, api_key: str = "", ollama_url: str = "http://localhost:11434"):
+    """Get available models for a specific provider"""
+    try:
+        client = get_client(provider, api_key, ollama_url)
+        models = await client.list_models()
+        return {"provider": provider, "models": models}
+    except Exception as e:
+        logger.error(f"Error listing {provider} models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/chat")
 async def chat(request: ChatRequest):
     """
-    Chat with OpenAI (non-streaming)
+    Chat with AI provider (non-streaming)
 
     Returns complete response with usage and cost information
     """
     try:
-        # Initialize OpenAI client with provided API key
-        client = OpenAIClient(api_key=request.api_key)
+        client = get_client(request.provider, request.api_key, request.ollama_url)
 
         logger.info(f"Chat request for project {request.project_id} with {len(request.messages)} messages")
 
@@ -170,14 +199,13 @@ async def chat(request: ChatRequest):
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     """
-    Stream chat responses from OpenAI
+    Stream chat responses from AI provider
 
     Returns a Server-Sent Events (SSE) stream of tokens as they are generated
     """
     async def generate():
         try:
-            # Initialize OpenAI client with provided API key
-            client = OpenAIClient(api_key=request.api_key)
+            client = get_client(request.provider, request.api_key, request.ollama_url)
 
             logger.info(f"Stream request for project {request.project_id} with {len(request.messages)} messages")
 
@@ -210,11 +238,12 @@ async def chat_stream(request: ChatRequest):
 
         except Exception as e:
             logger.error(f"Error in stream: {e}")
-            # Simplify error message using LLM
-            try:
-                simplified_error = await client.simplify_error_message(str(e))
-            except:
-                simplified_error = str(e)
+            simplified_error = str(e)
+            if request.provider == "openai":
+                try:
+                    simplified_error = await client.simplify_error_message(str(e))
+                except:
+                    pass
             yield f"data: {json.dumps({'type': 'error', 'error': simplified_error})}\n\n"
 
     return StreamingResponse(
@@ -223,7 +252,7 @@ async def chat_stream(request: ChatRequest):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable buffering in nginx
+            "X-Accel-Buffering": "no",
         }
     )
 
@@ -327,8 +356,7 @@ async def generate_framework(request: GenerateFrameworkRequest):
                 detail=f"Framework '{request.framework_id}' not found"
             )
 
-        # Initialize OpenAI client
-        client = OpenAIClient(api_key=request.api_key)
+        client = get_client(request.provider, request.api_key, request.ollama_url)
 
         # Assemble context from documents
         context_sections = []
@@ -341,17 +369,12 @@ async def generate_framework(request: GenerateFrameworkRequest):
 
             context_sections.append(f"{doc_header}\n\n{doc.content}")
 
-        # Build full context
         assembled_context = "\n\n---\n\n".join(context_sections) if context_sections else "No context documents provided."
 
-        # Build system prompt from framework definition
         system_prompt = framework.get("system_prompt", "")
-
-        # Add example output to system prompt for reference
         if framework.get("example_output"):
             system_prompt += f"\n\n## Example Output Format:\n\n{framework['example_output']}"
 
-        # Build user prompt with context and user's specific request
         user_prompt_parts = [
             "# Context Documents",
             assembled_context,
@@ -360,7 +383,6 @@ async def generate_framework(request: GenerateFrameworkRequest):
             request.user_prompt or f"Generate a {framework['name']} based on the context provided above.",
         ]
 
-        # Add guiding questions if user prompt is minimal
         if len(request.user_prompt) < 50 and framework.get("guiding_questions"):
             user_prompt_parts.append("\n## Consider These Questions:")
             for question in framework["guiding_questions"]:
@@ -368,10 +390,9 @@ async def generate_framework(request: GenerateFrameworkRequest):
 
         user_prompt = "\n".join(user_prompt_parts)
 
-        logger.info(f"Calling OpenAI with model {request.model}")
+        logger.info(f"Calling {request.provider} with model {request.model}")
         logger.info(f"Context size: {len(assembled_context)} chars, User prompt: {len(request.user_prompt)} chars")
 
-        # Call OpenAI API (non-streaming for now)
         response = await client.chat(
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -424,10 +445,8 @@ async def generate_framework_stream(request: GenerateFrameworkRequest):
                 yield f"data: {json.dumps({'type': 'error', 'error': f'Framework {request.framework_id} not found'})}\n\n"
                 return
 
-            # Initialize OpenAI client
-            client = OpenAIClient(api_key=request.api_key)
+            client = get_client(request.provider, request.api_key, request.ollama_url)
 
-            # Assemble context from documents
             context_sections = []
             for doc in request.context_documents:
                 doc_header = f"## Document: {doc.name}"
@@ -485,11 +504,12 @@ async def generate_framework_stream(request: GenerateFrameworkRequest):
 
         except Exception as e:
             logger.error(f"Error in generate_framework_stream: {e}")
-            # Simplify error message using LLM
-            try:
-                simplified_error = await client.simplify_error_message(str(e))
-            except:
-                simplified_error = str(e)
+            simplified_error = str(e)
+            if request.provider == "openai":
+                try:
+                    simplified_error = await client.simplify_error_message(str(e))
+                except:
+                    pass
             yield f"data: {json.dumps({'type': 'error', 'error': simplified_error})}\n\n"
 
     return StreamingResponse(

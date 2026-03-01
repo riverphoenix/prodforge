@@ -74,6 +74,11 @@ pub struct Settings {
     pub jira_project_key: Option<String>,
     pub notion_api_token_encrypted: Option<String>,
     pub notion_parent_page_id: Option<String>,
+    pub anthropic_api_key_encrypted: Option<String>,
+    pub google_api_key_encrypted: Option<String>,
+    pub ollama_base_url: Option<String>,
+    pub default_provider: Option<String>,
+    pub enabled_models: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -96,12 +101,17 @@ pub struct SettingsUpdate {
     pub jira_project_key: Option<String>,
     pub notion_api_token: Option<String>,
     pub notion_parent_page_id: Option<String>,
+    pub anthropic_api_key: Option<String>,
+    pub google_api_key: Option<String>,
+    pub ollama_base_url: Option<String>,
+    pub default_provider: Option<String>,
+    pub enabled_models: Option<String>,
 }
 
 // Encryption helpers
 fn get_encryption_key(_app: &tauri::AppHandle) -> Result<[u8; 32], String> {
     // Derive a key from the app's unique identifier and machine ID
-    let app_id = "com.dsotiriou.ai-pm-ide";
+    let app_id = "com.dsotiriou.pmkit";
     let machine_id = machine_uid::get().unwrap_or_else(|_| "default-machine-id".to_string());
 
     let mut hasher = Sha256::new();
@@ -280,6 +290,11 @@ pub fn init_db(app: &tauri::AppHandle) -> Result<(), String> {
     let _ = conn.execute("ALTER TABLE settings ADD COLUMN jira_project_key TEXT", []);
     let _ = conn.execute("ALTER TABLE settings ADD COLUMN notion_api_token_encrypted TEXT", []);
     let _ = conn.execute("ALTER TABLE settings ADD COLUMN notion_parent_page_id TEXT", []);
+    let _ = conn.execute("ALTER TABLE settings ADD COLUMN anthropic_api_key_encrypted TEXT", []);
+    let _ = conn.execute("ALTER TABLE settings ADD COLUMN google_api_key_encrypted TEXT", []);
+    let _ = conn.execute("ALTER TABLE settings ADD COLUMN ollama_base_url TEXT", []);
+    let _ = conn.execute("ALTER TABLE settings ADD COLUMN default_provider TEXT DEFAULT 'openai'", []);
+    let _ = conn.execute("ALTER TABLE settings ADD COLUMN enabled_models TEXT", []);
 
     // Create token usage tracking table
     conn.execute(
@@ -303,6 +318,8 @@ pub fn init_db(app: &tauri::AppHandle) -> Result<(), String> {
         "CREATE INDEX IF NOT EXISTS idx_token_usage_date ON token_usage(date)",
         [],
     ).map_err(|e| format!("Failed to create token_usage date index: {}", e))?;
+
+    let _ = conn.execute("ALTER TABLE token_usage ADD COLUMN provider TEXT DEFAULT 'openai'", []);
 
     // Create context documents table
     conn.execute(
@@ -1517,6 +1534,7 @@ pub struct TokenUsage {
     pub id: String,
     pub conversation_id: String,
     pub model: String,
+    pub provider: String,
     pub input_tokens: i32,
     pub output_tokens: i32,
     pub total_tokens: i32,
@@ -1542,6 +1560,7 @@ pub async fn record_token_usage(
     input_tokens: i32,
     output_tokens: i32,
     cost: f64,
+    provider: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     let conn = get_db_connection(&app)?;
@@ -1550,11 +1569,12 @@ pub async fn record_token_usage(
     let timestamp = now.timestamp();
     let date = now.format("%Y-%m-%d").to_string();
     let total_tokens = input_tokens + output_tokens;
+    let provider_val = provider.unwrap_or_else(|| "openai".to_string());
 
     conn.execute(
-        "INSERT INTO token_usage (id, conversation_id, model, input_tokens, output_tokens, total_tokens, cost, created_at, date)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![&id, &conversation_id, &model, &input_tokens, &output_tokens, &total_tokens, &cost, &timestamp, &date],
+        "INSERT INTO token_usage (id, conversation_id, model, input_tokens, output_tokens, total_tokens, cost, created_at, date, provider)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![&id, &conversation_id, &model, &input_tokens, &output_tokens, &total_tokens, &cost, &timestamp, &date, &provider_val],
     ).map_err(|e| format!("Failed to record token usage: {}", e))?;
 
     Ok(id)
@@ -1615,7 +1635,7 @@ pub async fn get_all_token_usage(
     let conn = get_db_connection(&app)?;
 
     let mut stmt = conn.prepare(
-        "SELECT id, conversation_id, model, input_tokens, output_tokens, total_tokens, cost, created_at, date
+        "SELECT id, conversation_id, model, input_tokens, output_tokens, total_tokens, cost, created_at, date, COALESCE(provider, 'openai')
          FROM token_usage
          ORDER BY created_at DESC"
     ).map_err(|e| format!("Failed to prepare query: {}", e))?;
@@ -1625,6 +1645,7 @@ pub async fn get_all_token_usage(
             id: row.get(0)?,
             conversation_id: row.get(1)?,
             model: row.get(2)?,
+            provider: row.get(9)?,
             input_tokens: row.get(3)?,
             output_tokens: row.get(4)?,
             total_tokens: row.get(5)?,
@@ -1648,7 +1669,8 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<Settings, String> {
         "SELECT id, api_key_encrypted, username, name, surname, job_title, company, company_url,
                 profile_pic, about_me, about_role, jira_url, jira_email, jira_api_token_encrypted,
                 jira_project_key, notion_api_token_encrypted, notion_parent_page_id,
-                created_at, updated_at
+                anthropic_api_key_encrypted, google_api_key_encrypted, ollama_base_url, default_provider,
+                enabled_models, created_at, updated_at
          FROM settings WHERE id = ?1"
     ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
@@ -1671,8 +1693,13 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<Settings, String> {
             jira_project_key: row.get(14)?,
             notion_api_token_encrypted: row.get(15)?,
             notion_parent_page_id: row.get(16)?,
-            created_at: row.get(17)?,
-            updated_at: row.get(18)?,
+            anthropic_api_key_encrypted: row.get(17)?,
+            google_api_key_encrypted: row.get(18)?,
+            ollama_base_url: row.get(19)?,
+            default_provider: row.get(20)?,
+            enabled_models: row.get(21)?,
+            created_at: row.get(22)?,
+            updated_at: row.get(23)?,
         })
     }).map_err(|e| format!("Failed to get settings: {}", e))?;
 
@@ -1707,6 +1734,18 @@ pub async fn update_settings(
         None
     };
 
+    let anthropic_key_encrypted = if let Some(ref key) = settings.anthropic_api_key {
+        if key.is_empty() { None } else { Some(encrypt_string(key, &enc_key)?) }
+    } else {
+        None
+    };
+
+    let google_key_encrypted = if let Some(ref key) = settings.google_api_key {
+        if key.is_empty() { None } else { Some(encrypt_string(key, &enc_key)?) }
+    } else {
+        None
+    };
+
     conn.execute(
         "UPDATE settings
          SET api_key_encrypted = COALESCE(?1, api_key_encrypted),
@@ -1725,8 +1764,13 @@ pub async fn update_settings(
              jira_project_key = COALESCE(?14, jira_project_key),
              notion_api_token_encrypted = COALESCE(?15, notion_api_token_encrypted),
              notion_parent_page_id = COALESCE(?16, notion_parent_page_id),
-             updated_at = ?17
-         WHERE id = ?18",
+             anthropic_api_key_encrypted = COALESCE(?17, anthropic_api_key_encrypted),
+             google_api_key_encrypted = COALESCE(?18, google_api_key_encrypted),
+             ollama_base_url = COALESCE(?19, ollama_base_url),
+             default_provider = COALESCE(?20, default_provider),
+             enabled_models = COALESCE(?21, enabled_models),
+             updated_at = ?22
+         WHERE id = ?23",
         params![
             &api_key_encrypted,
             &settings.username,
@@ -1744,6 +1788,11 @@ pub async fn update_settings(
             &settings.jira_project_key,
             &notion_token_encrypted,
             &settings.notion_parent_page_id,
+            &anthropic_key_encrypted,
+            &google_key_encrypted,
+            &settings.ollama_base_url,
+            &settings.default_provider,
+            &settings.enabled_models,
             &now,
             "default"
         ],
@@ -1775,6 +1824,180 @@ pub async fn delete_api_key(app: tauri::AppHandle) -> Result<(), String> {
     ).map_err(|e| format!("Failed to delete API key: {}", e))?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_decrypted_anthropic_key(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let settings = get_settings(app.clone()).await?;
+
+    if let Some(encrypted) = settings.anthropic_api_key_encrypted {
+        let key = get_encryption_key(&app)?;
+        Ok(Some(decrypt_string(&encrypted, &key)?))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn get_decrypted_google_key(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let settings = get_settings(app.clone()).await?;
+
+    if let Some(encrypted) = settings.google_api_key_encrypted {
+        let key = get_encryption_key(&app)?;
+        Ok(Some(decrypt_string(&encrypted, &key)?))
+    } else {
+        Ok(None)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProviderInfo {
+    pub id: String,
+    pub name: String,
+    pub configured: bool,
+    pub models: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_available_providers(app: tauri::AppHandle) -> Result<Vec<ProviderInfo>, String> {
+    let settings = get_settings(app).await?;
+
+    let providers = vec![
+        ProviderInfo {
+            id: "openai".to_string(),
+            name: "OpenAI".to_string(),
+            configured: settings.api_key_encrypted.is_some(),
+            models: vec!["gpt-5".to_string(), "gpt-5-mini".to_string(), "gpt-5-nano".to_string()],
+        },
+        ProviderInfo {
+            id: "anthropic".to_string(),
+            name: "Anthropic".to_string(),
+            configured: settings.anthropic_api_key_encrypted.is_some(),
+            models: vec!["claude-sonnet-4-5".to_string(), "claude-haiku-4-5".to_string()],
+        },
+        ProviderInfo {
+            id: "google".to_string(),
+            name: "Google".to_string(),
+            configured: settings.google_api_key_encrypted.is_some(),
+            models: vec!["gemini-2.5-pro".to_string(), "gemini-2.5-flash".to_string()],
+        },
+        ProviderInfo {
+            id: "ollama".to_string(),
+            name: "Ollama".to_string(),
+            configured: settings.ollama_base_url.is_some(),
+            models: vec!["llama3".to_string(), "mistral".to_string(), "codellama".to_string()],
+        },
+    ];
+
+    Ok(providers)
+}
+
+#[tauri::command]
+pub async fn get_usage_by_provider(
+    start_date: String,
+    end_date: String,
+    app: tauri::AppHandle,
+) -> Result<Vec<serde_json::Value>, String> {
+    let conn = get_db_connection(&app)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT COALESCE(provider, 'openai') as provider,
+                SUM(total_tokens) as total_tokens,
+                SUM(input_tokens) as input_tokens,
+                SUM(output_tokens) as output_tokens,
+                SUM(cost) as cost,
+                COUNT(*) as count
+         FROM token_usage
+         WHERE date >= ?1 AND date <= ?2
+         GROUP BY provider
+         ORDER BY cost DESC"
+    ).map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let rows = stmt.query_map(params![&start_date, &end_date], |row| {
+        Ok(serde_json::json!({
+            "provider": row.get::<_, String>(0)?,
+            "total_tokens": row.get::<_, i32>(1)?,
+            "input_tokens": row.get::<_, i32>(2)?,
+            "output_tokens": row.get::<_, i32>(3)?,
+            "cost": row.get::<_, f64>(4)?,
+            "count": row.get::<_, i32>(5)?,
+        }))
+    }).map_err(|e| format!("Failed to query usage by provider: {}", e))?;
+
+    let result: Result<Vec<serde_json::Value>, _> = rows.collect();
+    result.map_err(|e| format!("Failed to collect: {}", e))
+}
+
+#[tauri::command]
+pub async fn get_usage_by_model(
+    start_date: String,
+    end_date: String,
+    app: tauri::AppHandle,
+) -> Result<Vec<serde_json::Value>, String> {
+    let conn = get_db_connection(&app)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT model,
+                COALESCE(provider, 'openai') as provider,
+                SUM(total_tokens) as total_tokens,
+                SUM(cost) as cost,
+                COUNT(*) as count
+         FROM token_usage
+         WHERE date >= ?1 AND date <= ?2
+         GROUP BY model, provider
+         ORDER BY cost DESC"
+    ).map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let rows = stmt.query_map(params![&start_date, &end_date], |row| {
+        Ok(serde_json::json!({
+            "model": row.get::<_, String>(0)?,
+            "provider": row.get::<_, String>(1)?,
+            "total_tokens": row.get::<_, i32>(2)?,
+            "cost": row.get::<_, f64>(3)?,
+            "count": row.get::<_, i32>(4)?,
+        }))
+    }).map_err(|e| format!("Failed to query usage by model: {}", e))?;
+
+    let result: Result<Vec<serde_json::Value>, _> = rows.collect();
+    result.map_err(|e| format!("Failed to collect: {}", e))
+}
+
+#[tauri::command]
+pub async fn export_usage_csv(
+    start_date: String,
+    end_date: String,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let conn = get_db_connection(&app)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT date, model, COALESCE(provider, 'openai'), input_tokens, output_tokens, total_tokens, cost
+         FROM token_usage
+         WHERE date >= ?1 AND date <= ?2
+         ORDER BY date ASC, created_at ASC"
+    ).map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let mut csv = String::from("date,model,provider,input_tokens,output_tokens,total_tokens,cost\n");
+
+    let rows = stmt.query_map(params![&start_date, &end_date], |row| {
+        Ok(format!(
+            "{},{},{},{},{},{},{:.6}",
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i32>(3)?,
+            row.get::<_, i32>(4)?,
+            row.get::<_, i32>(5)?,
+            row.get::<_, f64>(6)?,
+        ))
+    }).map_err(|e| format!("Failed to query: {}", e))?;
+
+    for row in rows {
+        csv.push_str(&row.map_err(|e| format!("Row error: {}", e))?);
+        csv.push('\n');
+    }
+
+    Ok(csv)
 }
 
 // Folder commands

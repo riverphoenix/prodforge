@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Settings as SettingsType, TokenUsageAggregate, TokenUsage } from '../lib/types';
-import { settingsAPI, tokenUsageAPI, integrationsAPI } from '../lib/ipc';
+import { Settings as SettingsType, LLMProvider } from '../lib/types';
+import { settingsAPI, integrationsAPI, modelsAPI } from '../lib/ipc';
+import AnalyticsDashboard from '../components/AnalyticsDashboard';
 
 type SettingsTab = 'general' | 'profile' | 'usage' | 'integrations';
 
@@ -24,13 +25,29 @@ export default function Settings() {
   const [hasApiKey, setHasApiKey] = useState(false);
   const [displayKey, setDisplayKey] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<'openai' | 'anthropic' | 'google' | null>(null);
 
-  const [tokenUsageData, setTokenUsageData] = useState<TokenUsageAggregate[]>([]);
-  const [allTokenUsage, setAllTokenUsage] = useState<TokenUsage[]>([]);
-  const [viewType, setViewType] = useState<'daily' | 'monthly'>('daily');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [loadingTokens, setLoadingTokens] = useState(false);
+  const [anthropicApiKey, setAnthropicApiKey] = useState('');
+  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+  const [hasAnthropicKey, setHasAnthropicKey] = useState(false);
+  const [displayAnthropicKey, setDisplayAnthropicKey] = useState('');
+
+  const [googleApiKey, setGoogleApiKey] = useState('');
+  const [showGoogleKey, setShowGoogleKey] = useState(false);
+  const [hasGoogleKey, setHasGoogleKey] = useState(false);
+  const [displayGoogleKey, setDisplayGoogleKey] = useState('');
+
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState('http://localhost:11434');
+  const [defaultProvider, setDefaultProvider] = useState<LLMProvider>('openai');
+
+  const [testingProvider, setTestingProvider] = useState<LLMProvider | null>(null);
+  const [providerTestStatus, setProviderTestStatus] = useState<Record<string, 'none' | 'success' | 'error'>>({});
+
+  const [discoveredModels, setDiscoveredModels] = useState<Record<string, string[]>>({});
+  const [enabledModels, setEnabledModels] = useState<Record<string, string[]>>({});
+  const [discoveringModels, setDiscoveringModels] = useState<Record<string, boolean>>({});
+  const [modelsExpanded, setModelsExpanded] = useState(false);
+
 
   const [jiraUrl, setJiraUrl] = useState('');
   const [jiraEmail, setJiraEmail] = useState('');
@@ -47,12 +64,6 @@ export default function Settings() {
   useEffect(() => {
     loadSettings();
   }, []);
-
-  useEffect(() => {
-    if (activeTab === 'usage') {
-      loadTokenUsage();
-    }
-  }, [activeTab, viewType, startDate, endDate]);
 
   const loadSettings = async () => {
     setLoading(true);
@@ -73,42 +84,50 @@ export default function Settings() {
       setJiraProjectKey(data.jira_project_key || '');
       setNotionParentPageId(data.notion_parent_page_id || '');
 
+      setOllamaBaseUrl(data.ollama_base_url || 'http://localhost:11434');
+      setDefaultProvider((data.default_provider as LLMProvider) || 'openai');
+
+      if (data.enabled_models) {
+        try { setEnabledModels(JSON.parse(data.enabled_models)); } catch { /* ignore */ }
+      }
+
+      const maskKey = (key: string | null): string => {
+        if (key && key.length > 5) {
+          return `${key.substring(0, 2)}${'*'.repeat(10)}${key.substring(key.length - 2)}`;
+        }
+        return '';
+      };
+
       const keyExists = !!data.api_key_encrypted;
       setHasApiKey(keyExists);
-
       if (keyExists) {
         const decryptedKey = await settingsAPI.getDecryptedApiKey();
-        if (decryptedKey && decryptedKey.length > 5) {
-          const masked = `${decryptedKey.substring(0, 2)}${'*'.repeat(10)}${decryptedKey.substring(decryptedKey.length - 2)}`;
-          setDisplayKey(masked);
-        } else {
-          setDisplayKey('');
-        }
+        setDisplayKey(maskKey(decryptedKey));
       } else {
         setDisplayKey('');
+      }
+
+      const anthropicExists = !!data.anthropic_api_key_encrypted;
+      setHasAnthropicKey(anthropicExists);
+      if (anthropicExists) {
+        const decryptedKey = await settingsAPI.getDecryptedAnthropicKey();
+        setDisplayAnthropicKey(maskKey(decryptedKey));
+      } else {
+        setDisplayAnthropicKey('');
+      }
+
+      const googleExists = !!data.google_api_key_encrypted;
+      setHasGoogleKey(googleExists);
+      if (googleExists) {
+        const decryptedKey = await settingsAPI.getDecryptedGoogleKey();
+        setDisplayGoogleKey(maskKey(decryptedKey));
+      } else {
+        setDisplayGoogleKey('');
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadTokenUsage = async () => {
-    setLoadingTokens(true);
-    try {
-      const end = endDate || new Date().toISOString().split('T')[0];
-      const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const [aggregateData, allData] = await Promise.all([
-        tokenUsageAPI.getByDateRange(start, end, viewType),
-        tokenUsageAPI.getAll()
-      ]);
-      setTokenUsageData(aggregateData);
-      setAllTokenUsage(allData);
-    } catch (error) {
-      console.error('Failed to load token usage:', error);
-    } finally {
-      setLoadingTokens(false);
     }
   };
 
@@ -126,8 +145,15 @@ export default function Settings() {
         company_url: companyUrl || undefined,
         about_me: aboutMe || undefined,
         about_role: aboutRole || undefined,
+        anthropic_api_key: anthropicApiKey || undefined,
+        google_api_key: googleApiKey || undefined,
+        ollama_base_url: ollamaBaseUrl || undefined,
+        default_provider: defaultProvider || undefined,
+        enabled_models: Object.keys(enabledModels).length > 0 ? JSON.stringify(enabledModels) : undefined,
       });
       setApiKey('');
+      setAnthropicApiKey('');
+      setGoogleApiKey('');
       await loadSettings();
       alert('Settings saved successfully!');
     } catch (error) {
@@ -138,21 +164,71 @@ export default function Settings() {
     }
   };
 
-  const handleDeleteApiKey = () => setShowDeleteConfirm(true);
-  const handleDeleteCancel = () => setShowDeleteConfirm(false);
+  const handleDeleteApiKey = (target: 'openai' | 'anthropic' | 'google') => {
+    setDeleteTarget(target);
+    setShowDeleteConfirm(true);
+  };
+  const handleDeleteCancel = () => { setShowDeleteConfirm(false); setDeleteTarget(null); };
 
   const handleDeleteConfirm = async () => {
     setShowDeleteConfirm(false);
+    const target = deleteTarget;
+    setDeleteTarget(null);
     try {
-      await settingsAPI.deleteApiKey();
-      setHasApiKey(false);
-      setApiKey('');
-      setDisplayKey('');
+      if (target === 'openai') {
+        await settingsAPI.deleteApiKey();
+        setHasApiKey(false);
+        setApiKey('');
+        setDisplayKey('');
+      } else if (target === 'anthropic') {
+        await settingsAPI.update({ anthropic_api_key: '' });
+        setHasAnthropicKey(false);
+        setAnthropicApiKey('');
+        setDisplayAnthropicKey('');
+      } else if (target === 'google') {
+        await settingsAPI.update({ google_api_key: '' });
+        setHasGoogleKey(false);
+        setGoogleApiKey('');
+        setDisplayGoogleKey('');
+      }
       await loadSettings();
-      alert('API key deleted successfully!');
+      alert(`${target === 'openai' ? 'OpenAI' : target === 'anthropic' ? 'Anthropic' : 'Google'} API key deleted!`);
     } catch (error) {
-      console.error('Failed to delete API key:', error);
+      console.error(`Failed to delete ${target} API key:`, error);
       alert('Failed to delete API key. Please try again.');
+    }
+  };
+
+  const handleTestConnection = async (provider: LLMProvider) => {
+    setTestingProvider(provider);
+    setProviderTestStatus(prev => ({ ...prev, [provider]: 'none' }));
+    try {
+      if (provider === 'openai') {
+        if (apiKey) await settingsAPI.update({ api_key: apiKey });
+        const key = apiKey || await settingsAPI.getDecryptedApiKey();
+        if (!key) { setProviderTestStatus(prev => ({ ...prev, [provider]: 'error' })); return; }
+        const models = await modelsAPI.listByProvider('openai', key);
+        setProviderTestStatus(prev => ({ ...prev, [provider]: models.length > 0 ? 'success' : 'error' }));
+      } else if (provider === 'anthropic') {
+        if (anthropicApiKey) await settingsAPI.update({ anthropic_api_key: anthropicApiKey });
+        const key = anthropicApiKey || await settingsAPI.getDecryptedAnthropicKey();
+        if (!key) { setProviderTestStatus(prev => ({ ...prev, [provider]: 'error' })); return; }
+        const models = await modelsAPI.listByProvider('anthropic', key);
+        setProviderTestStatus(prev => ({ ...prev, [provider]: models.length > 0 ? 'success' : 'error' }));
+      } else if (provider === 'google') {
+        if (googleApiKey) await settingsAPI.update({ google_api_key: googleApiKey });
+        const key = googleApiKey || await settingsAPI.getDecryptedGoogleKey();
+        if (!key) { setProviderTestStatus(prev => ({ ...prev, [provider]: 'error' })); return; }
+        const models = await modelsAPI.listByProvider('google', key);
+        setProviderTestStatus(prev => ({ ...prev, [provider]: models.length > 0 ? 'success' : 'error' }));
+      } else if (provider === 'ollama') {
+        const models = await modelsAPI.listByProvider('ollama', '', ollamaBaseUrl);
+        setProviderTestStatus(prev => ({ ...prev, [provider]: models.length > 0 ? 'success' : 'error' }));
+      }
+    } catch {
+      setProviderTestStatus(prev => ({ ...prev, [provider]: 'error' }));
+    } finally {
+      setTestingProvider(null);
     }
   };
 
@@ -163,14 +239,6 @@ export default function Settings() {
       </div>
     );
   }
-
-  const getTotalStats = () => {
-    const totalTokens = tokenUsageData.reduce((sum, item) => sum + item.total_tokens, 0);
-    const totalCost = tokenUsageData.reduce((sum, item) => sum + item.cost, 0);
-    return { totalTokens, totalCost };
-  };
-
-  const maxTokens = Math.max(...tokenUsageData.map(d => d.total_tokens), 1);
 
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: 'general', label: 'General' },
@@ -204,27 +272,48 @@ export default function Settings() {
       <div style={{ flex: 1, overflowY: 'auto' }} className="p-8">
         {activeTab === 'general' && (
           <div className="max-w-2xl">
-            <h1 className="text-2xl font-semibold text-codex-text-primary mb-8">General</h1>
+            <h1 className="text-2xl font-semibold text-codex-text-primary mb-8">AI Providers</h1>
 
-            {/* API Key Setting Row */}
-            <div className="mb-8">
+            {/* Default Provider */}
+            <div className="mb-6">
               <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-codex-text-primary">OpenAI API Key</div>
+                  <div className="text-sm font-medium text-codex-text-primary">Default Provider</div>
                   <div className="text-xs text-codex-text-secondary mt-1">
-                    Your API key is encrypted and stored securely locally.
+                    Used as the default for new conversations and generations.
                   </div>
+                </div>
+                <select
+                  value={defaultProvider}
+                  onChange={(e) => setDefaultProvider(e.target.value as LLMProvider)}
+                  className="w-72 px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm focus:outline-none focus:ring-1 focus:ring-codex-accent"
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="google">Google</option>
+                  <option value="ollama">Ollama (Local)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* OpenAI */}
+            <div className="mb-6">
+              <h2 className="text-lg font-medium text-codex-text-primary mb-3 flex items-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-codex-text-secondary">
+                  <path d="M22.28 9.37a5.93 5.93 0 0 0-.51-4.88 6 6 0 0 0-6.45-2.87A5.93 5.93 0 0 0 10.83 0a6 6 0 0 0-5.72 4.13A5.93 5.93 0 0 0 1.14 7.3a6 6 0 0 0 .74 7.07 5.93 5.93 0 0 0 .51 4.88 6 6 0 0 0 6.45 2.87A5.93 5.93 0 0 0 13.17 24a6 6 0 0 0 5.72-4.13 5.93 5.93 0 0 0 3.97-3.17 6 6 0 0 0-.74-7.07l.16-.26z"/>
+                </svg>
+                OpenAI
+              </h2>
+              <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-codex-text-primary">API Key</div>
+                  <div className="text-xs text-codex-text-secondary mt-1">Encrypted and stored locally.</div>
                 </div>
                 <div className="w-72 flex-shrink-0">
                   {hasApiKey && displayKey && (
                     <div className="flex items-center gap-2 mb-2">
                       <span className="font-mono text-xs text-green-400">{displayKey}</span>
-                      <button
-                        onClick={handleDeleteApiKey}
-                        className="text-xs text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        Delete
-                      </button>
+                      <button onClick={() => handleDeleteApiKey('openai')} className="text-xs text-red-400 hover:text-red-300 transition-colors">Delete</button>
                     </div>
                   )}
                   <div className="flex gap-2">
@@ -235,35 +324,282 @@ export default function Settings() {
                       placeholder={hasApiKey ? 'Enter new key...' : 'sk-...'}
                       className="flex-1 px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
                     />
-                    <button
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="px-2 text-xs text-codex-text-secondary hover:text-codex-text-primary"
-                    >
+                    <button onClick={() => setShowApiKey(!showApiKey)} className="px-2 text-xs text-codex-text-secondary hover:text-codex-text-primary">
                       {showApiKey ? 'Hide' : 'Show'}
                     </button>
                   </div>
                   <p className="text-xs text-codex-text-muted mt-2">
                     Get your key from{' '}
-                    <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-codex-accent hover:underline">
-                      platform.openai.com
-                    </a>
+                    <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-codex-accent hover:underline">platform.openai.com</a>
                   </p>
                 </div>
               </div>
+              <div className="flex items-center gap-3 mt-3">
+                <button
+                  onClick={() => handleTestConnection('openai')}
+                  disabled={testingProvider === 'openai' || (!hasApiKey && !apiKey)}
+                  className="px-3 py-2 text-xs bg-codex-surface border border-codex-border rounded-md text-codex-text-primary hover:bg-codex-surface-hover disabled:opacity-50"
+                >
+                  {testingProvider === 'openai' ? 'Testing...' : 'Test Connection'}
+                </button>
+                {providerTestStatus['openai'] === 'success' && <span className="text-xs text-green-400">Connected</span>}
+                {providerTestStatus['openai'] === 'error' && <span className="text-xs text-red-400">Connection failed</span>}
+              </div>
+            </div>
+
+            {/* Anthropic */}
+            <div className="mb-6">
+              <h2 className="text-lg font-medium text-codex-text-primary mb-3 flex items-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-codex-text-secondary">
+                  <path d="M13.83 1.5h3.84L24 22.5h-3.84l-6.33-21zm-7.5 0H2.49L8.82 22.5h3.84L6.33 1.5z"/>
+                </svg>
+                Anthropic
+              </h2>
+              <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-codex-text-primary">API Key</div>
+                  <div className="text-xs text-codex-text-secondary mt-1">For Claude models (Sonnet, Haiku).</div>
+                </div>
+                <div className="w-72 flex-shrink-0">
+                  {hasAnthropicKey && displayAnthropicKey && (
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-mono text-xs text-green-400">{displayAnthropicKey}</span>
+                      <button onClick={() => handleDeleteApiKey('anthropic')} className="text-xs text-red-400 hover:text-red-300 transition-colors">Delete</button>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type={showAnthropicKey ? 'text' : 'password'}
+                      value={anthropicApiKey}
+                      onChange={(e) => setAnthropicApiKey(e.target.value)}
+                      placeholder={hasAnthropicKey ? 'Enter new key...' : 'sk-ant-...'}
+                      className="flex-1 px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
+                    />
+                    <button onClick={() => setShowAnthropicKey(!showAnthropicKey)} className="px-2 text-xs text-codex-text-secondary hover:text-codex-text-primary">
+                      {showAnthropicKey ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-codex-text-muted mt-2">
+                    Get your key from{' '}
+                    <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-codex-accent hover:underline">console.anthropic.com</a>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mt-3">
+                <button
+                  onClick={() => handleTestConnection('anthropic')}
+                  disabled={testingProvider === 'anthropic' || (!hasAnthropicKey && !anthropicApiKey)}
+                  className="px-3 py-2 text-xs bg-codex-surface border border-codex-border rounded-md text-codex-text-primary hover:bg-codex-surface-hover disabled:opacity-50"
+                >
+                  {testingProvider === 'anthropic' ? 'Testing...' : 'Test Connection'}
+                </button>
+                {providerTestStatus['anthropic'] === 'success' && <span className="text-xs text-green-400">Connected</span>}
+                {providerTestStatus['anthropic'] === 'error' && <span className="text-xs text-red-400">Connection failed</span>}
+              </div>
+            </div>
+
+            {/* Google */}
+            <div className="mb-6">
+              <h2 className="text-lg font-medium text-codex-text-primary mb-3 flex items-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-codex-text-secondary">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Google
+              </h2>
+              <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-codex-text-primary">API Key</div>
+                  <div className="text-xs text-codex-text-secondary mt-1">For Gemini models (Pro, Flash).</div>
+                </div>
+                <div className="w-72 flex-shrink-0">
+                  {hasGoogleKey && displayGoogleKey && (
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-mono text-xs text-green-400">{displayGoogleKey}</span>
+                      <button onClick={() => handleDeleteApiKey('google')} className="text-xs text-red-400 hover:text-red-300 transition-colors">Delete</button>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type={showGoogleKey ? 'text' : 'password'}
+                      value={googleApiKey}
+                      onChange={(e) => setGoogleApiKey(e.target.value)}
+                      placeholder={hasGoogleKey ? 'Enter new key...' : 'AIza...'}
+                      className="flex-1 px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
+                    />
+                    <button onClick={() => setShowGoogleKey(!showGoogleKey)} className="px-2 text-xs text-codex-text-secondary hover:text-codex-text-primary">
+                      {showGoogleKey ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-codex-text-muted mt-2">
+                    Get your key from{' '}
+                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-codex-accent hover:underline">aistudio.google.com</a>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mt-3">
+                <button
+                  onClick={() => handleTestConnection('google')}
+                  disabled={testingProvider === 'google' || (!hasGoogleKey && !googleApiKey)}
+                  className="px-3 py-2 text-xs bg-codex-surface border border-codex-border rounded-md text-codex-text-primary hover:bg-codex-surface-hover disabled:opacity-50"
+                >
+                  {testingProvider === 'google' ? 'Testing...' : 'Test Connection'}
+                </button>
+                {providerTestStatus['google'] === 'success' && <span className="text-xs text-green-400">Connected</span>}
+                {providerTestStatus['google'] === 'error' && <span className="text-xs text-red-400">Connection failed</span>}
+              </div>
+            </div>
+
+            {/* Ollama */}
+            <div className="mb-6">
+              <h2 className="text-lg font-medium text-codex-text-primary mb-3 flex items-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-codex-text-secondary">
+                  <circle cx="12" cy="12" r="10"/>
+                  <circle cx="12" cy="12" r="4" fill="#1e1e1e"/>
+                </svg>
+                Ollama (Local)
+              </h2>
+              <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-codex-text-primary">Base URL</div>
+                  <div className="text-xs text-codex-text-secondary mt-1">Local Ollama server address. Free, runs on your machine.</div>
+                </div>
+                <div className="w-72 flex-shrink-0">
+                  <input
+                    type="url"
+                    value={ollamaBaseUrl}
+                    onChange={(e) => setOllamaBaseUrl(e.target.value)}
+                    placeholder="http://localhost:11434"
+                    className="w-full px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mt-3">
+                <button
+                  onClick={() => handleTestConnection('ollama')}
+                  disabled={testingProvider === 'ollama'}
+                  className="px-3 py-2 text-xs bg-codex-surface border border-codex-border rounded-md text-codex-text-primary hover:bg-codex-surface-hover disabled:opacity-50"
+                >
+                  {testingProvider === 'ollama' ? 'Testing...' : 'Test Connection'}
+                </button>
+                {providerTestStatus['ollama'] === 'success' && <span className="text-xs text-green-400">Connected</span>}
+                {providerTestStatus['ollama'] === 'error' && <span className="text-xs text-red-400">Not reachable</span>}
+              </div>
+            </div>
+
+            {/* Model Configuration */}
+            <div className="border border-codex-border rounded-lg p-4 mt-6">
+              <button
+                onClick={() => setModelsExpanded(!modelsExpanded)}
+                className="w-full flex items-center justify-between"
+              >
+                <div>
+                  <div className="text-sm font-medium text-codex-text-primary">Model Configuration</div>
+                  <div className="text-[10px] text-codex-text-muted mt-0.5">Discover and choose which models appear in the model selector</div>
+                </div>
+                <svg className={`w-4 h-4 text-codex-text-muted transition-transform ${modelsExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {modelsExpanded && (
+                <div className="mt-4 space-y-4">
+                  {(['openai', 'anthropic', 'google', 'ollama'] as LLMProvider[]).map(provider => {
+                    const isConfigured = provider === 'openai' ? hasApiKey :
+                      provider === 'anthropic' ? hasAnthropicKey :
+                      provider === 'google' ? hasGoogleKey :
+                      !!ollamaBaseUrl;
+                    if (!isConfigured) return null;
+                    const providerLabel = provider === 'openai' ? 'OpenAI' : provider === 'anthropic' ? 'Anthropic' : provider === 'google' ? 'Google' : 'Ollama';
+                    const discovered = discoveredModels[provider] || [];
+                    const enabled = enabledModels[provider] || [];
+                    const isDiscovering = discoveringModels[provider];
+
+                    return (
+                      <div key={provider} className="border border-codex-border/50 rounded-md p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-medium text-codex-text-primary">{providerLabel}</span>
+                          <button
+                            onClick={async () => {
+                              setDiscoveringModels(prev => ({ ...prev, [provider]: true }));
+                              try {
+                                const key = await settingsAPI.getDecryptedKeyForProvider(provider);
+                                const url = provider === 'ollama' ? ollamaBaseUrl : undefined;
+                                const models = await modelsAPI.listByProvider(provider, key || '', url);
+                                setDiscoveredModels(prev => ({ ...prev, [provider]: models }));
+                                if (!enabledModels[provider] || enabledModels[provider].length === 0) {
+                                  setEnabledModels(prev => ({ ...prev, [provider]: models.slice(0, 5) }));
+                                }
+                              } catch { /* ignore */ }
+                              setDiscoveringModels(prev => ({ ...prev, [provider]: false }));
+                            }}
+                            disabled={isDiscovering}
+                            className="px-2 py-1 text-[10px] bg-codex-surface border border-codex-border rounded text-codex-text-secondary hover:text-codex-text-primary disabled:opacity-50"
+                          >
+                            {isDiscovering ? 'Discovering...' : discovered.length > 0 ? 'Refresh' : 'Discover Models'}
+                          </button>
+                        </div>
+                        {discovered.length > 0 ? (
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
+                            {discovered.map(model => {
+                              const isEnabled = enabled.includes(model);
+                              return (
+                                <label key={model} className="flex items-center gap-2 py-0.5 cursor-pointer group">
+                                  <input
+                                    type="checkbox"
+                                    checked={isEnabled}
+                                    onChange={() => {
+                                      setEnabledModels(prev => {
+                                        const current = prev[provider] || [];
+                                        const updated = isEnabled
+                                          ? current.filter(m => m !== model)
+                                          : [...current, model];
+                                        return { ...prev, [provider]: updated };
+                                      });
+                                    }}
+                                    className="rounded border-codex-border"
+                                  />
+                                  <span className={`text-[11px] ${isEnabled ? 'text-codex-text-primary' : 'text-codex-text-muted'}`}>
+                                    {model}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-codex-text-muted">Click "Discover Models" to fetch available models from the API</div>
+                        )}
+                        {discovered.length > 0 && (
+                          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-codex-border/30">
+                            <button
+                              onClick={() => setEnabledModels(prev => ({ ...prev, [provider]: [...discovered] }))}
+                              className="text-[9px] text-codex-accent hover:underline"
+                            >Enable All</button>
+                            <button
+                              onClick={() => setEnabledModels(prev => ({ ...prev, [provider]: [] }))}
+                              className="text-[9px] text-codex-text-muted hover:text-codex-text-secondary"
+                            >Disable All</button>
+                            <span className="text-[9px] text-codex-text-muted ml-auto">{enabled.length}/{discovered.length} enabled</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Save */}
-            {apiKey && (
-              <div className="flex justify-end">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="px-4 py-2 bg-codex-accent hover:bg-codex-accent-hover disabled:opacity-50 text-white rounded-md text-sm transition-colors"
-                >
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            )}
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-4 py-2 bg-codex-accent hover:bg-codex-accent-hover disabled:opacity-50 text-white rounded-md text-sm transition-colors"
+              >
+                {saving ? 'Saving...' : 'Save Provider Settings'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -424,169 +760,8 @@ export default function Settings() {
 
         {activeTab === 'usage' && (
           <div className="max-w-4xl">
-            <h1 className="text-2xl font-semibold text-codex-text-primary mb-8">Usage</h1>
-
-            {/* Controls */}
-            <div className="flex items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-3">
-                <div>
-                  <label className="block text-xs text-codex-text-muted mb-1">Start</label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm focus:outline-none focus:ring-1 focus:ring-codex-accent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-codex-text-muted mb-1">End</label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm focus:outline-none focus:ring-1 focus:ring-codex-accent"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setViewType('daily')}
-                  className={`px-3 py-2 text-sm rounded-md transition-colors ${
-                    viewType === 'daily'
-                      ? 'bg-codex-surface text-codex-text-primary'
-                      : 'text-codex-text-secondary hover:bg-codex-surface/50'
-                  }`}
-                >
-                  Daily
-                </button>
-                <button
-                  onClick={() => setViewType('monthly')}
-                  className={`px-3 py-2 text-sm rounded-md transition-colors ${
-                    viewType === 'monthly'
-                      ? 'bg-codex-surface text-codex-text-primary'
-                      : 'text-codex-text-secondary hover:bg-codex-surface/50'
-                  }`}
-                >
-                  Monthly
-                </button>
-              </div>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
-                <div className="text-xs text-codex-text-muted mb-1">Total Tokens</div>
-                <div className="text-xl font-semibold text-codex-text-primary">
-                  {getTotalStats().totalTokens.toLocaleString()}
-                </div>
-              </div>
-              <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
-                <div className="text-xs text-codex-text-muted mb-1">Total Cost</div>
-                <div className="text-xl font-semibold text-codex-text-primary">
-                  ${getTotalStats().totalCost.toFixed(4)}
-                </div>
-              </div>
-              <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
-                <div className="text-xs text-codex-text-muted mb-1">Conversations</div>
-                <div className="text-xl font-semibold text-codex-text-primary">
-                  {allTokenUsage.length > 0 ? new Set(allTokenUsage.map(u => u.conversation_id)).size : 0}
-                </div>
-              </div>
-            </div>
-
-            {/* Chart */}
-            <div className="bg-codex-surface/50 rounded-lg p-4 mb-6 border border-codex-border">
-              <h3 className="text-sm font-medium text-codex-text-primary mb-4">Token Usage Over Time</h3>
-              {loadingTokens ? (
-                <div className="flex items-center justify-center h-40">
-                  <div className="text-codex-text-secondary text-sm">Loading...</div>
-                </div>
-              ) : tokenUsageData.length === 0 ? (
-                <div className="flex items-center justify-center h-40">
-                  <div className="text-codex-text-muted text-sm">No token usage data</div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {tokenUsageData.map((item) => (
-                    <div key={item.date} className="flex items-center gap-3">
-                      <div className="w-24 text-xs text-codex-text-muted font-mono">{item.date}</div>
-                      <div className="flex-1 bg-codex-bg rounded-md overflow-hidden h-7 relative">
-                        <div
-                          className="bg-codex-accent h-full transition-all duration-300 flex items-center justify-end pr-2"
-                          style={{ width: `${(item.total_tokens / maxTokens) * 100}%` }}
-                        >
-                          {item.total_tokens > maxTokens * 0.1 && (
-                            <span className="text-xs text-white">{item.total_tokens.toLocaleString()}</span>
-                          )}
-                        </div>
-                        {item.total_tokens <= maxTokens * 0.1 && (
-                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-codex-text-muted">
-                            {item.total_tokens.toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                      <div className="w-20 text-right text-xs text-codex-text-muted">${item.cost.toFixed(4)}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Table */}
-            <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
-              <h3 className="text-sm font-medium text-codex-text-primary mb-4">Detailed Usage</h3>
-              {loadingTokens ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-codex-text-secondary text-sm">Loading...</div>
-                </div>
-              ) : allTokenUsage.length === 0 ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-codex-text-muted text-sm">No usage records</div>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-codex-border">
-                        <th className="text-left py-2 px-3 text-codex-text-muted text-xs font-medium">Date</th>
-                        <th className="text-left py-2 px-3 text-codex-text-muted text-xs font-medium">Model</th>
-                        <th className="text-right py-2 px-3 text-codex-text-muted text-xs font-medium">Input</th>
-                        <th className="text-right py-2 px-3 text-codex-text-muted text-xs font-medium">Output</th>
-                        <th className="text-right py-2 px-3 text-codex-text-muted text-xs font-medium">Total</th>
-                        <th className="text-right py-2 px-3 text-codex-text-muted text-xs font-medium">Cost</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allTokenUsage.slice(0, 50).map((usage) => (
-                        <tr key={usage.id} className="border-b border-codex-border/30 hover:bg-codex-surface/30">
-                          <td className="py-2 px-3 text-codex-text-secondary text-xs">
-                            {new Date(usage.created_at * 1000).toLocaleDateString()}
-                          </td>
-                          <td className="py-2 px-3 text-codex-text-secondary text-xs">{usage.model}</td>
-                          <td className="py-2 px-3 text-right text-codex-text-secondary text-xs">
-                            {usage.input_tokens.toLocaleString()}
-                          </td>
-                          <td className="py-2 px-3 text-right text-codex-text-secondary text-xs">
-                            {usage.output_tokens.toLocaleString()}
-                          </td>
-                          <td className="py-2 px-3 text-right text-codex-text-primary text-xs">
-                            {usage.total_tokens.toLocaleString()}
-                          </td>
-                          <td className="py-2 px-3 text-right text-codex-accent text-xs">
-                            ${usage.cost.toFixed(4)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {allTokenUsage.length > 50 && (
-                    <div className="text-center py-3 text-xs text-codex-text-muted">
-                      Showing 50 of {allTokenUsage.length} records
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <h1 className="text-2xl font-semibold text-codex-text-primary mb-8">Usage & Analytics</h1>
+            <AnalyticsDashboard />
           </div>
         )}
 
@@ -773,9 +948,9 @@ export default function Settings() {
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={handleDeleteCancel}>
           <div className="bg-codex-surface rounded-lg p-6 max-w-sm mx-4 border border-codex-border" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-medium text-codex-text-primary mb-2">Delete API Key?</h3>
+            <h3 className="text-base font-medium text-codex-text-primary mb-2">Delete {deleteTarget === 'openai' ? 'OpenAI' : deleteTarget === 'anthropic' ? 'Anthropic' : 'Google'} API Key?</h3>
             <p className="text-sm text-codex-text-secondary mb-6">
-              Are you sure? You'll need to add it again to use the chat.
+              Are you sure? You'll need to add it again to use this provider.
             </p>
             <div className="flex gap-3 justify-end">
               <button

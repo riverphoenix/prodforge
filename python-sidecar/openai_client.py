@@ -148,55 +148,44 @@ class OpenAIClient:
             raise
 
     async def list_models(self) -> List[str]:
-        """
-        List available OpenAI Frontier models only
-
-        Returns:
-            List of Frontier model IDs (latest generation - GPT-5)
-        """
+        """Dynamically discover available OpenAI chat models from the API."""
         try:
-            logger.info("Fetching available OpenAI Frontier models")
+            logger.info("Fetching available OpenAI models from API")
             models_response = await self.async_client.models.list()
 
-            # Frontier models only (GPT-5 generation - 2026)
-            frontier_models = [
-                "gpt-5",               # Main flagship model
-                "gpt-5-mini",          # Faster, cost-efficient version
-                "gpt-5-nano",          # Fastest, cheapest version
-            ]
+            chat_prefixes = ("gpt-5", "gpt-4", "gpt-3.5", "o1", "o3", "o4")
+            exclude_keywords = ("realtime", "audio", "tts", "whisper", "dall-e",
+                                "embedding", "moderation", "davinci", "babbage",
+                                "instruct", "search", "edit", "code-", "text-")
 
-            # Get available models from API
-            available_model_ids = {model.id for model in models_response.data}
+            text_models = []
+            for model in models_response.data:
+                mid = model.id.lower()
+                if not any(mid.startswith(p) for p in chat_prefixes):
+                    continue
+                if any(kw in mid for kw in exclude_keywords):
+                    continue
+                text_models.append(model.id)
 
-            # Filter to only Frontier models that are actually available
-            filtered_models = []
-            for frontier_model in frontier_models:
-                if frontier_model in available_model_ids:
-                    filtered_models.append(frontier_model)
-                else:
-                    # Check for dated versions (e.g., gpt-4o-2024-05-13)
-                    for available_id in available_model_ids:
-                        if available_id.startswith(frontier_model) and available_id not in filtered_models:
-                            filtered_models.append(available_id)
-                            break
+            priority = ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4o", "gpt-4o-mini",
+                         "o4-mini", "o3", "o3-mini", "o1", "o1-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"]
+            def sort_key(m):
+                for i, p in enumerate(priority):
+                    if m == p or m.startswith(p + "-"):
+                        return (i, m)
+                return (len(priority), m)
 
-            # If we found Frontier models, return them
-            if filtered_models:
-                logger.info(f"Found {len(filtered_models)} Frontier models: {filtered_models}")
-                return filtered_models
+            text_models.sort(key=sort_key)
 
-            # Fallback to default if nothing found
-            logger.warning("No Frontier models found, using defaults")
-            return frontier_models
+            if text_models:
+                logger.info(f"Found {len(text_models)} OpenAI text models: {text_models[:10]}...")
+                return text_models
+
+            return ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4o", "gpt-4o-mini"]
 
         except Exception as e:
             logger.error(f"Error fetching models: {e}")
-            # Return Frontier models as fallback
-            return [
-                "gpt-5",
-                "gpt-5-mini",
-                "gpt-5-nano",
-            ]
+            return ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4o", "gpt-4o-mini"]
 
     def calculate_cost(self, input_tokens: int, output_tokens: int, model: str) -> float:
         """
