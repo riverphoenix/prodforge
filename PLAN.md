@@ -23,43 +23,11 @@ Phases 1-7 are complete. Below is the plan for remaining phases.
 
 ---
 
-## Phase 9: Scale & Extend (6-8 weeks)
-
-Goal: Multi-user, multi-tool, extensible platform.
-
-### 9.1 Additional Integrations
-- **Slack**: Share output summaries to channels via webhook; workflow completion notifications
-- **Linear**: Create issues from outputs with project/team/label mapping
-- **Confluence**: Export as wiki pages with markdown-to-storage format conversion
-- **GitHub Issues**: Create issues with label/assignee mapping
-
-### 9.2 Cloud Sync & Backup
-- **Project archives**: Export/import entire projects as `.prodforge` files (SQLite + git + docs)
-- **Auto-backup**: Configurable schedule (hourly/daily/weekly) with retention policy
-- **Cloud sync**: Optional S3-compatible storage with client-side AES-256-GCM encryption
-- Conflict detection and resolution
-
-### 9.3 Collaboration
-- **Project sharing**: Shareable links with permission levels (view/comment/edit)
-- **Comments**: Inline and general comments on outputs with resolve/unresolve
-- **Activity feed**: Per-project timeline of all actions, filterable by type
-- **Presence**: Show who's viewing a shared project
-
-### 9.4 Plugin & Extension System
-- **Plugin architecture**: Load framework/prompt packs from JSON/YAML bundles
-- **Webhooks**: Configurable event notifications (output created, workflow completed)
-- **REST API**: Local HTTP API for scripting, CI/CD, and automation
-- **Custom themes**: JSON-based theme files; built-in: Codex Dark, Light, Solarized, Nord
-
-**Estimated scope**: ~12 new components, ~57 new Rust commands, ~6 new DB tables, optional companion server
-
----
-
-## Phase 10: Skills & Agents Foundation
+## Phase 9: Skills & Agents Foundation
 
 Goal: Create a PM skills library and AI agents system with Pydantic AI backend.
 
-### 10.1 Database Schema
+### 9.1 Database Schema
 
 4 new tables:
 
@@ -91,14 +59,14 @@ input_tokens INT, output_tokens INT, total_tokens INT, cost REAL,
 duration_ms INT?, error TEXT?, started_at, completed_at, created_at
 ```
 
-### 10.2 Rust CRUD Commands (~25 new commands)
+### 9.2 Rust CRUD Commands (~25 new commands)
 
 - **skill_categories**: list, get, create, update, delete
 - **skills**: list, get, create, update, delete, search, duplicate, increment_usage
 - **agents**: list, get, create, update, delete, search, duplicate, increment_usage
 - **agent_runs**: create, get, list, update_status, delete, get_usage_stats
 
-### 10.3 Seed Data (30 Skills, 6 Agents)
+### 9.3 Seed Data (30 Skills, 6 Agents)
 
 **30 Pre-built Skills** across 8 categories:
 
@@ -146,7 +114,7 @@ Each skill has a 200-500 word system_prompt with PM methodology, output format, 
 5. **Growth PM** — Uses: growth-loops, retention, pricing-strategy, measuring-pmf. Model: claude-opus. Focus: growth modeling and experiments.
 6. **Launch Captain** — Uses: launch-marketing, shipping-products, managing-timelines, giving-presentations. Model: claude-sonnet. Focus: launch planning and execution.
 
-### 10.4 Python Sidecar (Pydantic AI)
+### 9.4 Python Sidecar (Pydantic AI)
 
 New dependency: `pydantic-ai>=0.2.0`
 
@@ -162,7 +130,7 @@ New dependency: `pydantic-ai>=0.2.0`
 - `POST /agent/run/cancel` — Cancel running agent
 - `POST /agent/test` — Non-streaming quick test
 
-### 10.5 Frontend
+### 9.5 Frontend
 
 **Navigation**: Add Skills (Cmd+9) and Agents (Cmd+0) tabs to ActivityBar, Tab type, command palette.
 
@@ -179,11 +147,11 @@ New dependency: `pydantic-ai>=0.2.0`
 
 ---
 
-## Phase 11: Agent Teams & Visual Workflow Builder
+## Phase 10: Agent Teams & Visual Workflow Builder
 
 Goal: Compose agents into teams with a visual drag-and-drop canvas.
 
-### 11.1 Database Schema
+### 10.1 Database Schema
 
 **`agent_teams`** — Team definitions
 ```
@@ -217,7 +185,7 @@ input TEXT, output TEXT?, tokens INT, cost REAL, duration_ms INT?,
 started_at, completed_at
 ```
 
-### 11.2 Visual Canvas (React Flow)
+### 10.2 Visual Canvas (React Flow)
 
 - **@xyflow/react** canvas for drag-and-drop team composition
 - Custom node types: AgentNode (shows agent name, skills, model), ConnectorNode, ConditionalNode
@@ -226,13 +194,13 @@ started_at, completed_at
 - Properties panel for selected node/edge configuration
 - Real-time execution visualization (highlight active nodes, show progress)
 
-### 11.3 Execution Modes
+### 10.3 Execution Modes
 
 - **Sequential**: Agents run in order; each receives previous agent's output
 - **Parallel**: Multiple agents run simultaneously; outputs collected and merged
 - **Conductor**: A conductor agent orchestrates other agents dynamically, deciding which to invoke based on context
 
-### 11.4 Team Orchestration Engine
+### 10.4 Team Orchestration Engine
 
 New Python sidecar module: `team_engine.py`
 - `TeamEngine` class managing multi-agent execution
@@ -246,7 +214,7 @@ New Python sidecar module: `team_engine.py`
 - `POST /team/run/cancel` — Cancel running team
 - `GET /team/run/{id}/status` — Get team run status with per-step details
 
-### 11.5 Frontend
+### 10.5 Frontend
 
 - `AgentTeamsPage.tsx` — Team list, team canvas editor, team runner
 - `TeamCanvas.tsx` — React Flow canvas with custom nodes and edges
@@ -257,11 +225,11 @@ New Python sidecar module: `team_engine.py`
 
 ---
 
-## Phase 12: Scheduling, Tracing & Advanced Features
+## Phase 11: Scheduling, Tracing & Advanced Features
 
 Goal: Production-grade execution with scheduling, observability, and advanced agent patterns.
 
-### 12.1 Scheduling System
+### 11.1 Scheduling System
 
 **`schedules`** table:
 ```
@@ -276,7 +244,7 @@ next_run_at INT?, run_count INT, created_at, updated_at
 - **Event triggers**: Run when specific events occur (output created, project updated, workflow completed)
 - Schedule management UI with enable/disable, run history, next execution preview
 
-### 12.2 Tracing & Observability
+### 11.2 Tracing & Observability
 
 **`trace_spans`** table:
 ```
@@ -292,7 +260,7 @@ metadata TEXT (JSON), started_at INT, ended_at INT?
 - Logfire/OTEL integration with Pydantic AI's built-in tracing
 - Export traces as JSON for external analysis
 
-### 12.3 Advanced Agent Patterns
+### 11.3 Advanced Agent Patterns
 
 - **Fallback models**: If primary model fails, automatically retry with fallback
 - **Agent-as-tool**: Register agents as tools that other agents can invoke
@@ -300,7 +268,7 @@ metadata TEXT (JSON), started_at INT, ended_at INT?
 - **Tool library**: Reusable tools (web search, file read, calculator, API call) assignable to any agent
 - **Memory**: Per-agent conversation memory with configurable retention
 
-### 12.4 Enhanced Analytics
+### 11.4 Enhanced Analytics
 
 - Per-skill usage breakdown in analytics dashboard
 - Per-agent performance metrics (success rate, avg duration, cost efficiency)
@@ -308,7 +276,7 @@ metadata TEXT (JSON), started_at INT, ended_at INT?
 - Schedule execution history and reliability metrics
 - Cost forecasting based on usage trends
 
-### 12.5 Frontend
+### 11.5 Frontend
 
 - `SchedulesPage.tsx` — Schedule list, create/edit modal, run history
 - `TracingView.tsx` — Timeline visualization, span details, trace export
@@ -318,7 +286,7 @@ metadata TEXT (JSON), started_at INT, ended_at INT?
 
 ---
 
-## Beyond Phase 12 (Ideas)
+## Beyond Phase 11 (Ideas)
 
 - Mobile companion app (read-only project viewer)
 - Template marketplace with community sharing
