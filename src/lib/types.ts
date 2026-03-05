@@ -436,3 +436,267 @@ export interface GitRemoteInfo {
   name: string;
   url: string;
 }
+
+export type ModelTier = 'opus' | 'sonnet' | 'haiku';
+
+export interface SkillCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  sort_order: number;
+  is_builtin: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  system_prompt: string;
+  tools: string;
+  output_schema?: string;
+  model_tier: ModelTier;
+  is_builtin: boolean;
+  is_favorite: boolean;
+  usage_count: number;
+  sort_order: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface AgentDef {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  system_instructions: string;
+  skill_ids: string;
+  model: string;
+  provider: LLMProvider;
+  max_tokens: number;
+  temperature: number;
+  tools_config: string;
+  context_strategy: 'auto' | 'manual' | 'rag';
+  is_builtin: boolean;
+  is_favorite: boolean;
+  usage_count: number;
+  sort_order: number;
+  created_at: number;
+  updated_at: number;
+  fallback_model?: string;
+  memory_config?: string;
+}
+
+export type AgentRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface AgentRun {
+  id: string;
+  agent_id: string;
+  project_id: string;
+  skill_id?: string;
+  status: AgentRunStatus;
+  input_prompt: string;
+  output_content?: string;
+  model: string;
+  provider: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost: number;
+  duration_ms?: number;
+  error?: string;
+  started_at?: number;
+  completed_at?: number;
+  created_at: number;
+}
+
+export interface AgentUsageStats {
+  run_count: number;
+  total_tokens: number;
+  total_cost: number;
+  avg_duration_ms: number;
+}
+
+export interface AgentStreamEvent {
+  type: 'content_block_delta' | 'message_stop' | 'error' | 'run_id' | 'trace_spans' | 'fallback';
+  run_id?: string;
+  delta?: { text: string };
+  usage?: { input_tokens: number; output_tokens: number };
+  cost?: number;
+  error?: string;
+  message?: string;
+  spans?: TraceSpanData[];
+  duration_ms?: number;
+}
+
+// Phase 10: Agent Teams
+
+export type ExecutionMode = 'sequential' | 'parallel' | 'conductor';
+export type NodeType = 'agent' | 'connector' | 'conditional';
+export type NodeRole = 'worker' | 'conductor' | 'reviewer';
+export type EdgeType = 'data' | 'conditional' | 'parallel';
+export type TeamRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface AgentTeam {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  execution_mode: ExecutionMode;
+  conductor_agent_id: string | null;
+  max_concurrent: number;
+  is_favorite: boolean;
+  usage_count: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface AgentTeamNode {
+  id: string;
+  team_id: string;
+  agent_id: string;
+  node_type: NodeType;
+  position_x: number;
+  position_y: number;
+  role: NodeRole;
+  config: string;
+  sort_order: number;
+  created_at: number;
+}
+
+export interface AgentTeamEdge {
+  id: string;
+  team_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  edge_type: EdgeType;
+  condition: string | null;
+  data_mapping: string;
+  label: string | null;
+  created_at: number;
+}
+
+export interface TeamRun {
+  id: string;
+  team_id: string;
+  project_id: string;
+  status: TeamRunStatus;
+  input: string;
+  output: string | null;
+  execution_mode: ExecutionMode;
+  total_tokens: number;
+  total_cost: number;
+  duration_ms: number | null;
+  error: string | null;
+  started_at: number | null;
+  completed_at: number | null;
+  created_at: number;
+}
+
+export interface TeamRunStep {
+  id: string;
+  team_run_id: string;
+  node_id: string;
+  agent_id: string;
+  status: string;
+  input: string;
+  output: string | null;
+  tokens: number;
+  cost: number;
+  duration_ms: number | null;
+  error: string | null;
+  started_at: number | null;
+  completed_at: number | null;
+  created_at: number;
+}
+
+export interface TeamStreamEvent {
+  type: 'team_run_id' | 'node_start' | 'node_content' | 'node_complete' | 'node_error' | 'team_complete' | 'error' | 'trace_spans';
+  team_run_id?: string;
+  node_id?: string;
+  agent_id?: string;
+  agent_name?: string;
+  delta?: { text: string };
+  output?: string;
+  usage?: { input_tokens: number; output_tokens: number };
+  cost?: number;
+  duration_ms?: number;
+  error?: string;
+  spans?: TraceSpanData[];
+}
+
+// Phase 11: Scheduling & Tracing
+
+export type TriggerType = 'cron' | 'interval' | 'event';
+export type TargetType = 'agent' | 'team' | 'workflow';
+export type SpanKind = 'agent' | 'tool' | 'llm' | 'chain';
+
+export interface Schedule {
+  id: string;
+  name: string;
+  target_type: TargetType;
+  target_id: string;
+  trigger_type: TriggerType;
+  trigger_config: string;
+  is_active: boolean;
+  last_run_at: number | null;
+  next_run_at: number | null;
+  run_count: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface TraceSpan {
+  id: string;
+  parent_span_id: string | null;
+  run_id: string;
+  run_type: string;
+  span_name: string;
+  span_kind: SpanKind;
+  input: string;
+  output: string | null;
+  status: string;
+  tokens: number | null;
+  cost: number | null;
+  metadata: string;
+  started_at: number;
+  ended_at: number | null;
+}
+
+export interface TraceSpanData {
+  id: string;
+  parent_span_id?: string | null;
+  run_id: string;
+  run_type: string;
+  span_name: string;
+  span_kind: string;
+  input: string;
+  output?: string;
+  status: string;
+  tokens?: number | null;
+  cost?: number | null;
+  metadata: string;
+  started_at: number;
+  ended_at?: number | null;
+}
+
+export interface AgentAnalytics {
+  agent_id: string;
+  agent_name: string;
+  run_count: number;
+  total_tokens: number;
+  total_cost: number;
+  avg_duration_ms: number;
+  success_rate: number;
+}
+
+export interface SkillUsageAnalytics {
+  skill_id: string;
+  skill_name: string;
+  run_count: number;
+  total_tokens: number;
+  total_cost: number;
+}

@@ -621,9 +621,299 @@ pub fn init_db(app: &tauri::AppHandle) -> Result<(), String> {
         ).map_err(|e| format!("Failed to migrate workflows table: {}", e))?;
     }
 
+    // Skills & Agents tables
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS skill_categories (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            icon TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create skill_categories table: {}", e))?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS skills (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL,
+            system_prompt TEXT NOT NULL DEFAULT '',
+            tools TEXT NOT NULL DEFAULT '[]',
+            output_schema TEXT,
+            model_tier TEXT NOT NULL DEFAULT 'sonnet',
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            is_favorite INTEGER NOT NULL DEFAULT 0,
+            usage_count INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (category) REFERENCES skill_categories(id)
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create skills table: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category)",
+        [],
+    ).map_err(|e| format!("Failed to create skills index: {}", e))?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS agents (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            icon TEXT NOT NULL DEFAULT '',
+            system_instructions TEXT NOT NULL DEFAULT '',
+            skill_ids TEXT NOT NULL DEFAULT '[]',
+            model TEXT NOT NULL DEFAULT 'claude-sonnet-4-5',
+            provider TEXT NOT NULL DEFAULT 'anthropic',
+            max_tokens INTEGER NOT NULL DEFAULT 4096,
+            temperature REAL NOT NULL DEFAULT 0.7,
+            tools_config TEXT NOT NULL DEFAULT '{}',
+            context_strategy TEXT NOT NULL DEFAULT 'auto',
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            is_favorite INTEGER NOT NULL DEFAULT 0,
+            usage_count INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create agents table: {}", e))?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS agent_runs (
+            id TEXT PRIMARY KEY NOT NULL,
+            agent_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            skill_id TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            input_prompt TEXT NOT NULL DEFAULT '',
+            output_content TEXT,
+            model TEXT NOT NULL DEFAULT '',
+            provider TEXT NOT NULL DEFAULT '',
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens INTEGER NOT NULL DEFAULT 0,
+            cost REAL NOT NULL DEFAULT 0.0,
+            duration_ms INTEGER,
+            error TEXT,
+            started_at INTEGER,
+            completed_at INTEGER,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create agent_runs table: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent_id)",
+        [],
+    ).map_err(|e| format!("Failed to create agent_runs agent index: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_runs_project ON agent_runs(project_id)",
+        [],
+    ).map_err(|e| format!("Failed to create agent_runs project index: {}", e))?;
+
+    // Phase 10: Agent Teams tables
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS agent_teams (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            icon TEXT NOT NULL DEFAULT '',
+            execution_mode TEXT NOT NULL DEFAULT 'sequential',
+            conductor_agent_id TEXT,
+            max_concurrent INTEGER NOT NULL DEFAULT 3,
+            is_favorite INTEGER NOT NULL DEFAULT 0,
+            usage_count INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create agent_teams table: {}", e))?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS agent_team_nodes (
+            id TEXT PRIMARY KEY NOT NULL,
+            team_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            node_type TEXT NOT NULL DEFAULT 'agent',
+            position_x REAL NOT NULL DEFAULT 0.0,
+            position_y REAL NOT NULL DEFAULT 0.0,
+            role TEXT NOT NULL DEFAULT 'worker',
+            config TEXT NOT NULL DEFAULT '{}',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (team_id) REFERENCES agent_teams(id) ON DELETE CASCADE,
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create agent_team_nodes table: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_team_nodes_team ON agent_team_nodes(team_id)",
+        [],
+    ).map_err(|e| format!("Failed to create team_nodes index: {}", e))?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS agent_team_edges (
+            id TEXT PRIMARY KEY NOT NULL,
+            team_id TEXT NOT NULL,
+            source_node_id TEXT NOT NULL,
+            target_node_id TEXT NOT NULL,
+            edge_type TEXT NOT NULL DEFAULT 'data',
+            condition TEXT,
+            data_mapping TEXT NOT NULL DEFAULT '{}',
+            label TEXT,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (team_id) REFERENCES agent_teams(id) ON DELETE CASCADE,
+            FOREIGN KEY (source_node_id) REFERENCES agent_team_nodes(id) ON DELETE CASCADE,
+            FOREIGN KEY (target_node_id) REFERENCES agent_team_nodes(id) ON DELETE CASCADE
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create agent_team_edges table: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_team_edges_team ON agent_team_edges(team_id)",
+        [],
+    ).map_err(|e| format!("Failed to create team_edges index: {}", e))?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS team_runs (
+            id TEXT PRIMARY KEY NOT NULL,
+            team_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            input TEXT NOT NULL DEFAULT '',
+            output TEXT,
+            execution_mode TEXT NOT NULL DEFAULT 'sequential',
+            total_tokens INTEGER NOT NULL DEFAULT 0,
+            total_cost REAL NOT NULL DEFAULT 0.0,
+            duration_ms INTEGER,
+            error TEXT,
+            started_at INTEGER,
+            completed_at INTEGER,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (team_id) REFERENCES agent_teams(id) ON DELETE CASCADE,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create team_runs table: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_team_runs_team ON team_runs(team_id)",
+        [],
+    ).map_err(|e| format!("Failed to create team_runs team index: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_team_runs_project ON team_runs(project_id)",
+        [],
+    ).map_err(|e| format!("Failed to create team_runs project index: {}", e))?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS team_run_steps (
+            id TEXT PRIMARY KEY NOT NULL,
+            team_run_id TEXT NOT NULL,
+            node_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            input TEXT NOT NULL DEFAULT '',
+            output TEXT,
+            tokens INTEGER NOT NULL DEFAULT 0,
+            cost REAL NOT NULL DEFAULT 0.0,
+            duration_ms INTEGER,
+            error TEXT,
+            started_at INTEGER,
+            completed_at INTEGER,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (team_run_id) REFERENCES team_runs(id) ON DELETE CASCADE
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create team_run_steps table: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_team_run_steps_run ON team_run_steps(team_run_id)",
+        [],
+    ).map_err(|e| format!("Failed to create team_run_steps index: {}", e))?;
+
+    // Phase 11: Schedules
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS schedules (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            target_type TEXT NOT NULL DEFAULT 'agent',
+            target_id TEXT NOT NULL,
+            trigger_type TEXT NOT NULL DEFAULT 'interval',
+            trigger_config TEXT NOT NULL DEFAULT '{}',
+            is_active INTEGER NOT NULL DEFAULT 0,
+            last_run_at INTEGER,
+            next_run_at INTEGER,
+            run_count INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create schedules table: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_schedules_target ON schedules(target_id)",
+        [],
+    ).map_err(|e| format!("Failed to create schedules target index: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_schedules_active ON schedules(is_active)",
+        [],
+    ).map_err(|e| format!("Failed to create schedules active index: {}", e))?;
+
+    // Phase 11: Trace Spans
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS trace_spans (
+            id TEXT PRIMARY KEY NOT NULL,
+            parent_span_id TEXT,
+            run_id TEXT NOT NULL,
+            run_type TEXT NOT NULL DEFAULT 'agent',
+            span_name TEXT NOT NULL,
+            span_kind TEXT NOT NULL DEFAULT 'agent',
+            input TEXT NOT NULL DEFAULT '',
+            output TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            tokens INTEGER,
+            cost REAL,
+            metadata TEXT NOT NULL DEFAULT '{}',
+            started_at INTEGER NOT NULL,
+            ended_at INTEGER,
+            FOREIGN KEY (parent_span_id) REFERENCES trace_spans(id) ON DELETE SET NULL
+        )",
+        [],
+    ).map_err(|e| format!("Failed to create trace_spans table: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trace_spans_run ON trace_spans(run_id)",
+        [],
+    ).map_err(|e| format!("Failed to create trace_spans run index: {}", e))?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trace_spans_parent ON trace_spans(parent_span_id)",
+        [],
+    ).map_err(|e| format!("Failed to create trace_spans parent index: {}", e))?;
+
+    // Phase 11: Add fallback_model and memory_config to agents
+    let _ = conn.execute("ALTER TABLE agents ADD COLUMN fallback_model TEXT", []);
+    let _ = conn.execute("ALTER TABLE agents ADD COLUMN memory_config TEXT DEFAULT '{}'", []);
+
     seed_frameworks(&conn)?;
     seed_prompts(&conn)?;
     seed_workflows(&conn)?;
+    seed_skills(&conn)?;
+    seed_agents(&conn)?;
 
     // Create default settings if none exist
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))
@@ -5548,5 +5838,1634 @@ pub fn git_stage_all(repo_path: String) -> Result<(), String> {
     index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
         .map_err(|e| format!("Add all error: {}", e))?;
     index.write().map_err(|e| format!("Write index error: {}", e))?;
+    Ok(())
+}
+
+// === Phase 9: Skills & Agents ===
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SkillCategoryRow {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub sort_order: i32,
+    pub is_builtin: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SkillRow {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub system_prompt: String,
+    pub tools: String,
+    pub output_schema: Option<String>,
+    pub model_tier: String,
+    pub is_builtin: bool,
+    pub is_favorite: bool,
+    pub usage_count: i32,
+    pub sort_order: i32,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AgentRow {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub system_instructions: String,
+    pub skill_ids: String,
+    pub model: String,
+    pub provider: String,
+    pub max_tokens: i32,
+    pub temperature: f64,
+    pub tools_config: String,
+    pub context_strategy: String,
+    pub is_builtin: bool,
+    pub is_favorite: bool,
+    pub usage_count: i32,
+    pub sort_order: i32,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub fallback_model: Option<String>,
+    pub memory_config: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AgentRunRow {
+    pub id: String,
+    pub agent_id: String,
+    pub project_id: String,
+    pub skill_id: Option<String>,
+    pub status: String,
+    pub input_prompt: String,
+    pub output_content: Option<String>,
+    pub model: String,
+    pub provider: String,
+    pub input_tokens: i32,
+    pub output_tokens: i32,
+    pub total_tokens: i32,
+    pub cost: f64,
+    pub duration_ms: Option<i64>,
+    pub error: Option<String>,
+    pub started_at: Option<i64>,
+    pub completed_at: Option<i64>,
+    pub created_at: i64,
+}
+
+fn row_to_skill_category(row: &rusqlite::Row) -> rusqlite::Result<SkillCategoryRow> {
+    Ok(SkillCategoryRow {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        icon: row.get(3)?,
+        sort_order: row.get(4)?,
+        is_builtin: row.get::<_, i32>(5)? != 0,
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
+    })
+}
+
+const SKILL_CATEGORY_COLUMNS: &str = "id, name, description, icon, sort_order, is_builtin, created_at, updated_at";
+
+fn row_to_skill(row: &rusqlite::Row) -> rusqlite::Result<SkillRow> {
+    Ok(SkillRow {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        category: row.get(3)?,
+        system_prompt: row.get(4)?,
+        tools: row.get(5)?,
+        output_schema: row.get(6)?,
+        model_tier: row.get(7)?,
+        is_builtin: row.get::<_, i32>(8)? != 0,
+        is_favorite: row.get::<_, i32>(9)? != 0,
+        usage_count: row.get(10)?,
+        sort_order: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
+    })
+}
+
+const SKILL_COLUMNS: &str = "id, name, description, category, system_prompt, tools, output_schema, model_tier, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at";
+
+fn row_to_agent(row: &rusqlite::Row) -> rusqlite::Result<AgentRow> {
+    Ok(AgentRow {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        icon: row.get(3)?,
+        system_instructions: row.get(4)?,
+        skill_ids: row.get(5)?,
+        model: row.get(6)?,
+        provider: row.get(7)?,
+        max_tokens: row.get(8)?,
+        temperature: row.get(9)?,
+        tools_config: row.get(10)?,
+        context_strategy: row.get(11)?,
+        is_builtin: row.get::<_, i32>(12)? != 0,
+        is_favorite: row.get::<_, i32>(13)? != 0,
+        usage_count: row.get(14)?,
+        sort_order: row.get(15)?,
+        created_at: row.get(16)?,
+        updated_at: row.get(17)?,
+        fallback_model: row.get(18).ok(),
+        memory_config: row.get(19).ok(),
+    })
+}
+
+const AGENT_COLUMNS: &str = "id, name, description, icon, system_instructions, skill_ids, model, provider, max_tokens, temperature, tools_config, context_strategy, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at, fallback_model, memory_config";
+
+fn row_to_agent_run(row: &rusqlite::Row) -> rusqlite::Result<AgentRunRow> {
+    Ok(AgentRunRow {
+        id: row.get(0)?,
+        agent_id: row.get(1)?,
+        project_id: row.get(2)?,
+        skill_id: row.get(3)?,
+        status: row.get(4)?,
+        input_prompt: row.get(5)?,
+        output_content: row.get(6)?,
+        model: row.get(7)?,
+        provider: row.get(8)?,
+        input_tokens: row.get(9)?,
+        output_tokens: row.get(10)?,
+        total_tokens: row.get(11)?,
+        cost: row.get(12)?,
+        duration_ms: row.get(13)?,
+        error: row.get(14)?,
+        started_at: row.get(15)?,
+        completed_at: row.get(16)?,
+        created_at: row.get(17)?,
+    })
+}
+
+const AGENT_RUN_COLUMNS: &str = "id, agent_id, project_id, skill_id, status, input_prompt, output_content, model, provider, input_tokens, output_tokens, total_tokens, cost, duration_ms, error, started_at, completed_at, created_at";
+
+// === Phase 10: Agent Teams ===
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AgentTeamRow {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub execution_mode: String,
+    pub conductor_agent_id: Option<String>,
+    pub max_concurrent: i32,
+    pub is_favorite: bool,
+    pub usage_count: i32,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AgentTeamNodeRow {
+    pub id: String,
+    pub team_id: String,
+    pub agent_id: String,
+    pub node_type: String,
+    pub position_x: f64,
+    pub position_y: f64,
+    pub role: String,
+    pub config: String,
+    pub sort_order: i32,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AgentTeamEdgeRow {
+    pub id: String,
+    pub team_id: String,
+    pub source_node_id: String,
+    pub target_node_id: String,
+    pub edge_type: String,
+    pub condition: Option<String>,
+    pub data_mapping: String,
+    pub label: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TeamRunRow {
+    pub id: String,
+    pub team_id: String,
+    pub project_id: String,
+    pub status: String,
+    pub input: String,
+    pub output: Option<String>,
+    pub execution_mode: String,
+    pub total_tokens: i32,
+    pub total_cost: f64,
+    pub duration_ms: Option<i64>,
+    pub error: Option<String>,
+    pub started_at: Option<i64>,
+    pub completed_at: Option<i64>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TeamRunStepRow {
+    pub id: String,
+    pub team_run_id: String,
+    pub node_id: String,
+    pub agent_id: String,
+    pub status: String,
+    pub input: String,
+    pub output: Option<String>,
+    pub tokens: i32,
+    pub cost: f64,
+    pub duration_ms: Option<i64>,
+    pub error: Option<String>,
+    pub started_at: Option<i64>,
+    pub completed_at: Option<i64>,
+    pub created_at: i64,
+}
+
+fn row_to_agent_team(row: &rusqlite::Row) -> rusqlite::Result<AgentTeamRow> {
+    Ok(AgentTeamRow {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        icon: row.get(3)?,
+        execution_mode: row.get(4)?,
+        conductor_agent_id: row.get(5)?,
+        max_concurrent: row.get(6)?,
+        is_favorite: row.get::<_, i32>(7)? != 0,
+        usage_count: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
+    })
+}
+
+const AGENT_TEAM_COLUMNS: &str = "id, name, description, icon, execution_mode, conductor_agent_id, max_concurrent, is_favorite, usage_count, created_at, updated_at";
+
+fn row_to_team_node(row: &rusqlite::Row) -> rusqlite::Result<AgentTeamNodeRow> {
+    Ok(AgentTeamNodeRow {
+        id: row.get(0)?,
+        team_id: row.get(1)?,
+        agent_id: row.get(2)?,
+        node_type: row.get(3)?,
+        position_x: row.get(4)?,
+        position_y: row.get(5)?,
+        role: row.get(6)?,
+        config: row.get(7)?,
+        sort_order: row.get(8)?,
+        created_at: row.get(9)?,
+    })
+}
+
+const TEAM_NODE_COLUMNS: &str = "id, team_id, agent_id, node_type, position_x, position_y, role, config, sort_order, created_at";
+
+fn row_to_team_edge(row: &rusqlite::Row) -> rusqlite::Result<AgentTeamEdgeRow> {
+    Ok(AgentTeamEdgeRow {
+        id: row.get(0)?,
+        team_id: row.get(1)?,
+        source_node_id: row.get(2)?,
+        target_node_id: row.get(3)?,
+        edge_type: row.get(4)?,
+        condition: row.get(5)?,
+        data_mapping: row.get(6)?,
+        label: row.get(7)?,
+        created_at: row.get(8)?,
+    })
+}
+
+const TEAM_EDGE_COLUMNS: &str = "id, team_id, source_node_id, target_node_id, edge_type, condition, data_mapping, label, created_at";
+
+fn row_to_team_run(row: &rusqlite::Row) -> rusqlite::Result<TeamRunRow> {
+    Ok(TeamRunRow {
+        id: row.get(0)?,
+        team_id: row.get(1)?,
+        project_id: row.get(2)?,
+        status: row.get(3)?,
+        input: row.get(4)?,
+        output: row.get(5)?,
+        execution_mode: row.get(6)?,
+        total_tokens: row.get(7)?,
+        total_cost: row.get(8)?,
+        duration_ms: row.get(9)?,
+        error: row.get(10)?,
+        started_at: row.get(11)?,
+        completed_at: row.get(12)?,
+        created_at: row.get(13)?,
+    })
+}
+
+const TEAM_RUN_COLUMNS: &str = "id, team_id, project_id, status, input, output, execution_mode, total_tokens, total_cost, duration_ms, error, started_at, completed_at, created_at";
+
+fn row_to_team_run_step(row: &rusqlite::Row) -> rusqlite::Result<TeamRunStepRow> {
+    Ok(TeamRunStepRow {
+        id: row.get(0)?,
+        team_run_id: row.get(1)?,
+        node_id: row.get(2)?,
+        agent_id: row.get(3)?,
+        status: row.get(4)?,
+        input: row.get(5)?,
+        output: row.get(6)?,
+        tokens: row.get(7)?,
+        cost: row.get(8)?,
+        duration_ms: row.get(9)?,
+        error: row.get(10)?,
+        started_at: row.get(11)?,
+        completed_at: row.get(12)?,
+        created_at: row.get(13)?,
+    })
+}
+
+const TEAM_RUN_STEP_COLUMNS: &str = "id, team_run_id, node_id, agent_id, status, input, output, tokens, cost, duration_ms, error, started_at, completed_at, created_at";
+
+// Phase 11: Schedule structs
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScheduleRow {
+    pub id: String,
+    pub name: String,
+    pub target_type: String,
+    pub target_id: String,
+    pub trigger_type: String,
+    pub trigger_config: String,
+    pub is_active: bool,
+    pub last_run_at: Option<i64>,
+    pub next_run_at: Option<i64>,
+    pub run_count: i32,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+fn row_to_schedule(row: &rusqlite::Row) -> rusqlite::Result<ScheduleRow> {
+    Ok(ScheduleRow {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        target_type: row.get(2)?,
+        target_id: row.get(3)?,
+        trigger_type: row.get(4)?,
+        trigger_config: row.get(5)?,
+        is_active: row.get::<_, i32>(6)? != 0,
+        last_run_at: row.get(7)?,
+        next_run_at: row.get(8)?,
+        run_count: row.get(9)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
+const SCHEDULE_COLUMNS: &str = "id, name, target_type, target_id, trigger_type, trigger_config, is_active, last_run_at, next_run_at, run_count, created_at, updated_at";
+
+// Phase 11: Trace Span structs
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TraceSpanRow {
+    pub id: String,
+    pub parent_span_id: Option<String>,
+    pub run_id: String,
+    pub run_type: String,
+    pub span_name: String,
+    pub span_kind: String,
+    pub input: String,
+    pub output: Option<String>,
+    pub status: String,
+    pub tokens: Option<i32>,
+    pub cost: Option<f64>,
+    pub metadata: String,
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+}
+
+fn row_to_trace_span(row: &rusqlite::Row) -> rusqlite::Result<TraceSpanRow> {
+    Ok(TraceSpanRow {
+        id: row.get(0)?,
+        parent_span_id: row.get(1)?,
+        run_id: row.get(2)?,
+        run_type: row.get(3)?,
+        span_name: row.get(4)?,
+        span_kind: row.get(5)?,
+        input: row.get(6)?,
+        output: row.get(7)?,
+        status: row.get(8)?,
+        tokens: row.get(9)?,
+        cost: row.get(10)?,
+        metadata: row.get(11)?,
+        started_at: row.get(12)?,
+        ended_at: row.get(13)?,
+    })
+}
+
+const TRACE_SPAN_COLUMNS: &str = "id, parent_span_id, run_id, run_type, span_name, span_kind, input, output, status, tokens, cost, metadata, started_at, ended_at";
+
+// Phase 11: Analytics result structs
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AgentAnalyticsRow {
+    pub agent_id: String,
+    pub agent_name: String,
+    pub run_count: i32,
+    pub total_tokens: i64,
+    pub total_cost: f64,
+    pub avg_duration_ms: f64,
+    pub success_rate: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SkillUsageRow {
+    pub skill_id: String,
+    pub skill_name: String,
+    pub run_count: i32,
+    pub total_tokens: i64,
+    pub total_cost: f64,
+}
+
+// --- Skill Categories CRUD ---
+
+#[tauri::command]
+pub async fn list_skill_categories(app: tauri::AppHandle) -> Result<Vec<SkillCategoryRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM skill_categories ORDER BY sort_order, name", SKILL_CATEGORY_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map([], row_to_skill_category)
+        .map_err(|e| format!("Failed to list skill categories: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_skill_category(id: String, app: tauri::AppHandle) -> Result<Option<SkillCategoryRow>, String> {
+    let conn = get_db_connection(&app)?;
+    conn.query_row(
+        &format!("SELECT {} FROM skill_categories WHERE id = ?1", SKILL_CATEGORY_COLUMNS),
+        params![&id], row_to_skill_category,
+    ).optional().map_err(|e| format!("Failed to get skill category: {}", e))
+}
+
+#[tauri::command]
+pub async fn create_skill_category(name: String, description: String, icon: String, app: tauri::AppHandle) -> Result<SkillCategoryRow, String> {
+    let conn = get_db_connection(&app)?;
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    let max_sort: i32 = conn.query_row("SELECT COALESCE(MAX(sort_order), -1) FROM skill_categories", [], |row| row.get(0)).unwrap_or(-1);
+    conn.execute(
+        "INSERT INTO skill_categories (id, name, description, icon, sort_order, is_builtin, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
+        params![&id, &name, &description, &icon, max_sort + 1, &now, &now],
+    ).map_err(|e| format!("Failed to create skill category: {}", e))?;
+    get_skill_category(id, app).await?.ok_or_else(|| "Failed to retrieve created category".to_string())
+}
+
+#[tauri::command]
+pub async fn update_skill_category(id: String, name: Option<String>, description: Option<String>, icon: Option<String>, app: tauri::AppHandle) -> Result<SkillCategoryRow, String> {
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "UPDATE skill_categories SET name = COALESCE(?1, name), description = COALESCE(?2, description), icon = COALESCE(?3, icon), updated_at = ?4 WHERE id = ?5",
+        params![&name, &description, &icon, &now, &id],
+    ).map_err(|e| format!("Failed to update skill category: {}", e))?;
+    get_skill_category(id, app).await?.ok_or_else(|| "Category not found".to_string())
+}
+
+#[tauri::command]
+pub async fn delete_skill_category(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    let is_builtin: i32 = conn.query_row("SELECT is_builtin FROM skill_categories WHERE id = ?1", params![&id], |row| row.get(0))
+        .map_err(|e| format!("Category not found: {}", e))?;
+    if is_builtin != 0 { return Err("Cannot delete built-in categories".to_string()); }
+    conn.execute("DELETE FROM skill_categories WHERE id = ?1", params![&id]).map_err(|e| format!("Failed to delete: {}", e))?;
+    Ok(())
+}
+
+// --- Skills CRUD ---
+
+#[tauri::command]
+pub async fn list_skills(category: Option<String>, app: tauri::AppHandle) -> Result<Vec<SkillRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let (sql, param_values): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match &category {
+        Some(cat) => (
+            format!("SELECT {} FROM skills WHERE category = ?1 ORDER BY sort_order, name", SKILL_COLUMNS),
+            vec![Box::new(cat.clone()) as Box<dyn rusqlite::types::ToSql>],
+        ),
+        None => (
+            format!("SELECT {} FROM skills ORDER BY sort_order, name", SKILL_COLUMNS),
+            vec![],
+        ),
+    };
+    let params_ref: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map(params_ref.as_slice(), row_to_skill).map_err(|e| format!("Failed to list skills: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_skill(id: String, app: tauri::AppHandle) -> Result<Option<SkillRow>, String> {
+    let conn = get_db_connection(&app)?;
+    conn.query_row(
+        &format!("SELECT {} FROM skills WHERE id = ?1", SKILL_COLUMNS),
+        params![&id], row_to_skill,
+    ).optional().map_err(|e| format!("Failed to get skill: {}", e))
+}
+
+#[tauri::command]
+pub async fn create_skill(
+    name: String, description: String, category: String, system_prompt: String,
+    tools: String, output_schema: Option<String>, model_tier: String, app: tauri::AppHandle,
+) -> Result<SkillRow, String> {
+    let conn = get_db_connection(&app)?;
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    let max_sort: i32 = conn.query_row("SELECT COALESCE(MAX(sort_order), -1) FROM skills WHERE category = ?1", params![&category], |row| row.get(0)).unwrap_or(-1);
+    conn.execute(
+        "INSERT INTO skills (id, name, description, category, system_prompt, tools, output_schema, model_tier, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 0, 0, ?9, ?10, ?11)",
+        params![&id, &name, &description, &category, &system_prompt, &tools, &output_schema, &model_tier, max_sort + 1, &now, &now],
+    ).map_err(|e| format!("Failed to create skill: {}", e))?;
+    get_skill(id, app).await?.ok_or_else(|| "Failed to retrieve created skill".to_string())
+}
+
+#[tauri::command]
+pub async fn update_skill(
+    id: String, name: Option<String>, description: Option<String>, category: Option<String>,
+    system_prompt: Option<String>, tools: Option<String>, output_schema: Option<Option<String>>,
+    model_tier: Option<String>, is_favorite: Option<bool>, app: tauri::AppHandle,
+) -> Result<SkillRow, String> {
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "UPDATE skills SET name = COALESCE(?1, name), description = COALESCE(?2, description), category = COALESCE(?3, category),
+         system_prompt = COALESCE(?4, system_prompt), tools = COALESCE(?5, tools), model_tier = COALESCE(?6, model_tier), updated_at = ?7 WHERE id = ?8",
+        params![&name, &description, &category, &system_prompt, &tools, &model_tier, &now, &id],
+    ).map_err(|e| format!("Failed to update skill: {}", e))?;
+    if let Some(os) = output_schema {
+        conn.execute("UPDATE skills SET output_schema = ?1 WHERE id = ?2", params![&os, &id])
+            .map_err(|e| format!("Failed to update output_schema: {}", e))?;
+    }
+    if let Some(fav) = is_favorite {
+        conn.execute("UPDATE skills SET is_favorite = ?1 WHERE id = ?2", params![fav as i32, &id])
+            .map_err(|e| format!("Failed to update favorite: {}", e))?;
+    }
+    get_skill(id, app).await?.ok_or_else(|| "Skill not found after update".to_string())
+}
+
+#[tauri::command]
+pub async fn delete_skill(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    let is_builtin: i32 = conn.query_row("SELECT is_builtin FROM skills WHERE id = ?1", params![&id], |row| row.get(0))
+        .map_err(|e| format!("Skill not found: {}", e))?;
+    if is_builtin != 0 { return Err("Cannot delete built-in skills".to_string()); }
+    conn.execute("DELETE FROM skills WHERE id = ?1", params![&id]).map_err(|e| format!("Failed to delete skill: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn search_skills(query: String, app: tauri::AppHandle) -> Result<Vec<SkillRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let search = format!("%{}%", query);
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM skills WHERE name LIKE ?1 OR description LIKE ?1 OR system_prompt LIKE ?1 ORDER BY usage_count DESC, name", SKILL_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map(params![&search], row_to_skill).map_err(|e| format!("Failed to search skills: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn duplicate_skill(id: String, new_name: String, app: tauri::AppHandle) -> Result<SkillRow, String> {
+    let original = get_skill(id, app.clone()).await?.ok_or_else(|| "Skill not found".to_string())?;
+    create_skill(new_name, original.description, original.category, original.system_prompt, original.tools, original.output_schema, original.model_tier, app).await
+}
+
+#[tauri::command]
+pub async fn increment_skill_usage(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+    conn.execute("UPDATE skills SET usage_count = usage_count + 1, updated_at = ?1 WHERE id = ?2", params![&now, &id])
+        .map_err(|e| format!("Failed to increment skill usage: {}", e))?;
+    Ok(())
+}
+
+// --- Agents CRUD ---
+
+#[tauri::command]
+pub async fn list_agents(app: tauri::AppHandle) -> Result<Vec<AgentRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM agents ORDER BY sort_order, name", AGENT_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map([], row_to_agent).map_err(|e| format!("Failed to list agents: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_agent(id: String, app: tauri::AppHandle) -> Result<Option<AgentRow>, String> {
+    let conn = get_db_connection(&app)?;
+    conn.query_row(
+        &format!("SELECT {} FROM agents WHERE id = ?1", AGENT_COLUMNS),
+        params![&id], row_to_agent,
+    ).optional().map_err(|e| format!("Failed to get agent: {}", e))
+}
+
+#[tauri::command]
+pub async fn create_agent(
+    name: String, description: String, icon: String, system_instructions: String,
+    skill_ids: String, model: String, provider: String, max_tokens: i32,
+    temperature: f64, tools_config: String, context_strategy: String, app: tauri::AppHandle,
+) -> Result<AgentRow, String> {
+    let conn = get_db_connection(&app)?;
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    let max_sort: i32 = conn.query_row("SELECT COALESCE(MAX(sort_order), -1) FROM agents", [], |row| row.get(0)).unwrap_or(-1);
+    conn.execute(
+        "INSERT INTO agents (id, name, description, icon, system_instructions, skill_ids, model, provider, max_tokens, temperature, tools_config, context_strategy, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, 0, 0, ?13, ?14, ?15)",
+        params![&id, &name, &description, &icon, &system_instructions, &skill_ids, &model, &provider, &max_tokens, &temperature, &tools_config, &context_strategy, max_sort + 1, &now, &now],
+    ).map_err(|e| format!("Failed to create agent: {}", e))?;
+    get_agent(id, app).await?.ok_or_else(|| "Failed to retrieve created agent".to_string())
+}
+
+#[tauri::command]
+pub async fn update_agent(
+    id: String, name: Option<String>, description: Option<String>, icon: Option<String>,
+    system_instructions: Option<String>, skill_ids: Option<String>, model: Option<String>,
+    provider: Option<String>, max_tokens: Option<i32>, temperature: Option<f64>,
+    tools_config: Option<String>, context_strategy: Option<String>, is_favorite: Option<bool>,
+    fallback_model: Option<String>, memory_config: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<AgentRow, String> {
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "UPDATE agents SET name = COALESCE(?1, name), description = COALESCE(?2, description), icon = COALESCE(?3, icon),
+         system_instructions = COALESCE(?4, system_instructions), skill_ids = COALESCE(?5, skill_ids),
+         model = COALESCE(?6, model), provider = COALESCE(?7, provider), tools_config = COALESCE(?8, tools_config),
+         context_strategy = COALESCE(?9, context_strategy), fallback_model = COALESCE(?10, fallback_model),
+         memory_config = COALESCE(?11, memory_config), updated_at = ?12 WHERE id = ?13",
+        params![&name, &description, &icon, &system_instructions, &skill_ids, &model, &provider, &tools_config, &context_strategy, &fallback_model, &memory_config, &now, &id],
+    ).map_err(|e| format!("Failed to update agent: {}", e))?;
+    if let Some(mt) = max_tokens {
+        conn.execute("UPDATE agents SET max_tokens = ?1 WHERE id = ?2", params![&mt, &id]).map_err(|e| format!("Failed: {}", e))?;
+    }
+    if let Some(t) = temperature {
+        conn.execute("UPDATE agents SET temperature = ?1 WHERE id = ?2", params![&t, &id]).map_err(|e| format!("Failed: {}", e))?;
+    }
+    if let Some(fav) = is_favorite {
+        conn.execute("UPDATE agents SET is_favorite = ?1 WHERE id = ?2", params![fav as i32, &id]).map_err(|e| format!("Failed: {}", e))?;
+    }
+    get_agent(id, app).await?.ok_or_else(|| "Agent not found after update".to_string())
+}
+
+#[tauri::command]
+pub async fn delete_agent(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    let is_builtin: i32 = conn.query_row("SELECT is_builtin FROM agents WHERE id = ?1", params![&id], |row| row.get(0))
+        .map_err(|e| format!("Agent not found: {}", e))?;
+    if is_builtin != 0 { return Err("Cannot delete built-in agents".to_string()); }
+    conn.execute("DELETE FROM agents WHERE id = ?1", params![&id]).map_err(|e| format!("Failed to delete agent: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn search_agents(query: String, app: tauri::AppHandle) -> Result<Vec<AgentRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let search = format!("%{}%", query);
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM agents WHERE name LIKE ?1 OR description LIKE ?1 ORDER BY usage_count DESC, name", AGENT_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map(params![&search], row_to_agent).map_err(|e| format!("Failed to search agents: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn duplicate_agent(id: String, new_name: String, app: tauri::AppHandle) -> Result<AgentRow, String> {
+    let original = get_agent(id, app.clone()).await?.ok_or_else(|| "Agent not found".to_string())?;
+    create_agent(new_name, original.description, original.icon, original.system_instructions, original.skill_ids, original.model, original.provider, original.max_tokens, original.temperature, original.tools_config, original.context_strategy, app).await
+}
+
+#[tauri::command]
+pub async fn increment_agent_usage(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+    conn.execute("UPDATE agents SET usage_count = usage_count + 1, updated_at = ?1 WHERE id = ?2", params![&now, &id])
+        .map_err(|e| format!("Failed to increment agent usage: {}", e))?;
+    Ok(())
+}
+
+// --- Agent Runs CRUD ---
+
+#[tauri::command]
+pub async fn create_agent_run(
+    agent_id: String, project_id: String, skill_id: Option<String>,
+    input_prompt: String, model: String, provider: String, app: tauri::AppHandle,
+) -> Result<AgentRunRow, String> {
+    let conn = get_db_connection(&app)?;
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "INSERT INTO agent_runs (id, agent_id, project_id, skill_id, status, input_prompt, model, provider, input_tokens, output_tokens, total_tokens, cost, started_at, created_at)
+         VALUES (?1, ?2, ?3, ?4, 'running', ?5, ?6, ?7, 0, 0, 0, 0.0, ?8, ?9)",
+        params![&id, &agent_id, &project_id, &skill_id, &input_prompt, &model, &provider, &now, &now],
+    ).map_err(|e| format!("Failed to create agent run: {}", e))?;
+    get_agent_run(id, app).await?.ok_or_else(|| "Failed to retrieve created run".to_string())
+}
+
+#[tauri::command]
+pub async fn get_agent_run(id: String, app: tauri::AppHandle) -> Result<Option<AgentRunRow>, String> {
+    let conn = get_db_connection(&app)?;
+    conn.query_row(
+        &format!("SELECT {} FROM agent_runs WHERE id = ?1", AGENT_RUN_COLUMNS),
+        params![&id], row_to_agent_run,
+    ).optional().map_err(|e| format!("Failed to get agent run: {}", e))
+}
+
+#[tauri::command]
+pub async fn list_agent_runs(agent_id: Option<String>, project_id: Option<String>, app: tauri::AppHandle) -> Result<Vec<AgentRunRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let (sql, param_values): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match (&agent_id, &project_id) {
+        (Some(aid), Some(pid)) => (
+            format!("SELECT {} FROM agent_runs WHERE agent_id = ?1 AND project_id = ?2 ORDER BY created_at DESC", AGENT_RUN_COLUMNS),
+            vec![Box::new(aid.clone()) as Box<dyn rusqlite::types::ToSql>, Box::new(pid.clone())],
+        ),
+        (Some(aid), None) => (
+            format!("SELECT {} FROM agent_runs WHERE agent_id = ?1 ORDER BY created_at DESC", AGENT_RUN_COLUMNS),
+            vec![Box::new(aid.clone()) as Box<dyn rusqlite::types::ToSql>],
+        ),
+        (None, Some(pid)) => (
+            format!("SELECT {} FROM agent_runs WHERE project_id = ?1 ORDER BY created_at DESC", AGENT_RUN_COLUMNS),
+            vec![Box::new(pid.clone()) as Box<dyn rusqlite::types::ToSql>],
+        ),
+        (None, None) => (
+            format!("SELECT {} FROM agent_runs ORDER BY created_at DESC LIMIT 100", AGENT_RUN_COLUMNS),
+            vec![],
+        ),
+    };
+    let params_ref: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map(params_ref.as_slice(), row_to_agent_run).map_err(|e| format!("Failed to list agent runs: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn update_agent_run_status(
+    id: String, status: String, output_content: Option<String>,
+    input_tokens: Option<i32>, output_tokens: Option<i32>, total_tokens: Option<i32>,
+    cost: Option<f64>, duration_ms: Option<i64>, error: Option<String>, app: tauri::AppHandle,
+) -> Result<AgentRunRow, String> {
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+    let completed = if status == "completed" || status == "failed" || status == "cancelled" { Some(now) } else { None };
+    conn.execute(
+        "UPDATE agent_runs SET status = ?1, output_content = COALESCE(?2, output_content),
+         input_tokens = COALESCE(?3, input_tokens), output_tokens = COALESCE(?4, output_tokens),
+         total_tokens = COALESCE(?5, total_tokens), cost = COALESCE(?6, cost),
+         duration_ms = COALESCE(?7, duration_ms), error = COALESCE(?8, error), completed_at = COALESCE(?9, completed_at)
+         WHERE id = ?10",
+        params![&status, &output_content, &input_tokens, &output_tokens, &total_tokens, &cost, &duration_ms, &error, &completed, &id],
+    ).map_err(|e| format!("Failed to update agent run: {}", e))?;
+    get_agent_run(id, app).await?.ok_or_else(|| "Run not found".to_string())
+}
+
+#[tauri::command]
+pub async fn delete_agent_run(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute("DELETE FROM agent_runs WHERE id = ?1", params![&id]).map_err(|e| format!("Failed to delete run: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_agent_usage_stats(agent_id: String, app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let conn = get_db_connection(&app)?;
+    let stats = conn.query_row(
+        "SELECT COUNT(*) as run_count, COALESCE(SUM(total_tokens), 0) as total_tokens,
+         COALESCE(SUM(cost), 0.0) as total_cost, COALESCE(AVG(duration_ms), 0) as avg_duration
+         FROM agent_runs WHERE agent_id = ?1 AND status = 'completed'",
+        params![&agent_id],
+        |row| Ok(serde_json::json!({
+            "run_count": row.get::<_, i32>(0)?,
+            "total_tokens": row.get::<_, i64>(1)?,
+            "total_cost": row.get::<_, f64>(2)?,
+            "avg_duration_ms": row.get::<_, f64>(3)?,
+        })),
+    ).map_err(|e| format!("Failed to get usage stats: {}", e))?;
+    Ok(stats)
+}
+
+// --- Phase 10: Agent Teams CRUD ---
+
+#[tauri::command]
+pub async fn list_agent_teams(app: tauri::AppHandle) -> Result<Vec<AgentTeamRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM agent_teams ORDER BY is_favorite DESC, usage_count DESC, name", AGENT_TEAM_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map([], row_to_agent_team)
+        .map_err(|e| format!("Failed to list teams: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_agent_team(id: String, app: tauri::AppHandle) -> Result<Option<AgentTeamRow>, String> {
+    let conn = get_db_connection(&app)?;
+    conn.query_row(
+        &format!("SELECT {} FROM agent_teams WHERE id = ?1", AGENT_TEAM_COLUMNS),
+        params![&id], row_to_agent_team,
+    ).optional().map_err(|e| format!("Failed to get team: {}", e))
+}
+
+#[tauri::command]
+pub async fn create_agent_team(
+    name: String, description: String, icon: String,
+    execution_mode: String, conductor_agent_id: Option<String>, max_concurrent: i32,
+    app: tauri::AppHandle,
+) -> Result<AgentTeamRow, String> {
+    let conn = get_db_connection(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "INSERT INTO agent_teams (id, name, description, icon, execution_mode, conductor_agent_id, max_concurrent, is_favorite, usage_count, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0, ?8, ?9)",
+        params![&id, &name, &description, &icon, &execution_mode, &conductor_agent_id, &max_concurrent, &now, &now],
+    ).map_err(|e| format!("Failed to create team: {}", e))?;
+    get_agent_team(id, app).await?.ok_or_else(|| "Team not found after create".to_string())
+}
+
+#[tauri::command]
+pub async fn update_agent_team(
+    id: String, name: Option<String>, description: Option<String>, icon: Option<String>,
+    execution_mode: Option<String>, conductor_agent_id: Option<String>, max_concurrent: Option<i32>,
+    is_favorite: Option<bool>,
+    app: tauri::AppHandle,
+) -> Result<AgentTeamRow, String> {
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "UPDATE agent_teams SET name = COALESCE(?1, name), description = COALESCE(?2, description),
+         icon = COALESCE(?3, icon), execution_mode = COALESCE(?4, execution_mode),
+         conductor_agent_id = COALESCE(?5, conductor_agent_id), updated_at = ?6 WHERE id = ?7",
+        params![&name, &description, &icon, &execution_mode, &conductor_agent_id, &now, &id],
+    ).map_err(|e| format!("Failed to update team: {}", e))?;
+    if let Some(mc) = max_concurrent {
+        conn.execute("UPDATE agent_teams SET max_concurrent = ?1 WHERE id = ?2", params![&mc, &id])
+            .map_err(|e| format!("Failed: {}", e))?;
+    }
+    if let Some(fav) = is_favorite {
+        conn.execute("UPDATE agent_teams SET is_favorite = ?1 WHERE id = ?2", params![fav as i32, &id])
+            .map_err(|e| format!("Failed: {}", e))?;
+    }
+    get_agent_team(id, app).await?.ok_or_else(|| "Team not found after update".to_string())
+}
+
+#[tauri::command]
+pub async fn delete_agent_team(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute("DELETE FROM team_run_steps WHERE team_run_id IN (SELECT id FROM team_runs WHERE team_id = ?1)", params![&id])
+        .map_err(|e| format!("Failed to delete team run steps: {}", e))?;
+    conn.execute("DELETE FROM team_runs WHERE team_id = ?1", params![&id])
+        .map_err(|e| format!("Failed to delete team runs: {}", e))?;
+    conn.execute("DELETE FROM agent_team_edges WHERE team_id = ?1", params![&id])
+        .map_err(|e| format!("Failed to delete team edges: {}", e))?;
+    conn.execute("DELETE FROM agent_team_nodes WHERE team_id = ?1", params![&id])
+        .map_err(|e| format!("Failed to delete team nodes: {}", e))?;
+    conn.execute("DELETE FROM agent_teams WHERE id = ?1", params![&id])
+        .map_err(|e| format!("Failed to delete team: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn duplicate_agent_team(id: String, new_name: String, app: tauri::AppHandle) -> Result<AgentTeamRow, String> {
+    let new_id = {
+        let conn = get_db_connection(&app)?;
+        let team = conn.query_row(
+            &format!("SELECT {} FROM agent_teams WHERE id = ?1", AGENT_TEAM_COLUMNS),
+            params![&id], row_to_agent_team,
+        ).map_err(|e| format!("Team not found: {}", e))?;
+        let new_id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().timestamp();
+        conn.execute(
+            "INSERT INTO agent_teams (id, name, description, icon, execution_mode, conductor_agent_id, max_concurrent, is_favorite, usage_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0, ?8, ?9)",
+            params![&new_id, &new_name, &team.description, &team.icon, &team.execution_mode, &team.conductor_agent_id, &team.max_concurrent, &now, &now],
+        ).map_err(|e| format!("Failed to duplicate team: {}", e))?;
+        let nodes: Vec<AgentTeamNodeRow> = {
+            let mut stmt = conn.prepare(
+                &format!("SELECT {} FROM agent_team_nodes WHERE team_id = ?1", TEAM_NODE_COLUMNS)
+            ).map_err(|e| format!("Failed to prepare: {}", e))?;
+            let collected: Vec<AgentTeamNodeRow> = stmt.query_map(params![&id], row_to_team_node)
+                .map_err(|e| format!("Failed to list nodes: {}", e))?
+                .filter_map(|r| r.ok()).collect();
+            collected
+        };
+        let mut node_id_map = std::collections::HashMap::new();
+        for node in &nodes {
+            let new_node_id = uuid::Uuid::new_v4().to_string();
+            node_id_map.insert(node.id.clone(), new_node_id.clone());
+            conn.execute(
+                "INSERT INTO agent_team_nodes (id, team_id, agent_id, node_type, position_x, position_y, role, config, sort_order, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![&new_node_id, &new_id, &node.agent_id, &node.node_type, &node.position_x, &node.position_y, &node.role, &node.config, &node.sort_order, &now],
+            ).map_err(|e| format!("Failed to duplicate node: {}", e))?;
+        }
+        let edges: Vec<AgentTeamEdgeRow> = {
+            let mut stmt = conn.prepare(
+                &format!("SELECT {} FROM agent_team_edges WHERE team_id = ?1", TEAM_EDGE_COLUMNS)
+            ).map_err(|e| format!("Failed to prepare: {}", e))?;
+            let collected: Vec<AgentTeamEdgeRow> = stmt.query_map(params![&id], row_to_team_edge)
+                .map_err(|e| format!("Failed to list edges: {}", e))?
+                .filter_map(|r| r.ok()).collect();
+            collected
+        };
+        for edge in &edges {
+            if let (Some(new_src), Some(new_tgt)) = (node_id_map.get(&edge.source_node_id), node_id_map.get(&edge.target_node_id)) {
+                let new_edge_id = uuid::Uuid::new_v4().to_string();
+                conn.execute(
+                    "INSERT INTO agent_team_edges (id, team_id, source_node_id, target_node_id, edge_type, condition, data_mapping, label, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    params![&new_edge_id, &new_id, new_src, new_tgt, &edge.edge_type, &edge.condition, &edge.data_mapping, &edge.label, &now],
+                ).map_err(|e| format!("Failed to duplicate edge: {}", e))?;
+            }
+        }
+        new_id
+    };
+    get_agent_team(new_id, app).await?.ok_or_else(|| "Team not found after duplicate".to_string())
+}
+
+#[tauri::command]
+pub async fn search_agent_teams(query: String, app: tauri::AppHandle) -> Result<Vec<AgentTeamRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let pattern = format!("%{}%", query);
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM agent_teams WHERE name LIKE ?1 OR description LIKE ?1 ORDER BY usage_count DESC, name", AGENT_TEAM_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map(params![&pattern], row_to_agent_team)
+        .map_err(|e| format!("Failed to search teams: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn increment_team_usage(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute("UPDATE agent_teams SET usage_count = usage_count + 1, updated_at = ?1 WHERE id = ?2",
+        params![Utc::now().timestamp(), &id],
+    ).map_err(|e| format!("Failed to increment team usage: {}", e))?;
+    Ok(())
+}
+
+// --- Team Nodes CRUD ---
+
+#[tauri::command]
+pub async fn list_team_nodes(team_id: String, app: tauri::AppHandle) -> Result<Vec<AgentTeamNodeRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM agent_team_nodes WHERE team_id = ?1 ORDER BY sort_order", TEAM_NODE_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map(params![&team_id], row_to_team_node)
+        .map_err(|e| format!("Failed to list nodes: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn create_team_node(
+    team_id: String, agent_id: String, node_type: String,
+    position_x: f64, position_y: f64, role: String, config: String, sort_order: i32,
+    app: tauri::AppHandle,
+) -> Result<AgentTeamNodeRow, String> {
+    let conn = get_db_connection(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "INSERT INTO agent_team_nodes (id, team_id, agent_id, node_type, position_x, position_y, role, config, sort_order, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![&id, &team_id, &agent_id, &node_type, &position_x, &position_y, &role, &config, &sort_order, &now],
+    ).map_err(|e| format!("Failed to create node: {}", e))?;
+    conn.query_row(
+        &format!("SELECT {} FROM agent_team_nodes WHERE id = ?1", TEAM_NODE_COLUMNS),
+        params![&id], row_to_team_node,
+    ).map_err(|e| format!("Node not found after create: {}", e))
+}
+
+#[tauri::command]
+pub async fn update_team_node(
+    id: String, position_x: Option<f64>, position_y: Option<f64>,
+    role: Option<String>, config: Option<String>, sort_order: Option<i32>,
+    app: tauri::AppHandle,
+) -> Result<AgentTeamNodeRow, String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute(
+        "UPDATE agent_team_nodes SET role = COALESCE(?1, role), config = COALESCE(?2, config) WHERE id = ?3",
+        params![&role, &config, &id],
+    ).map_err(|e| format!("Failed to update node: {}", e))?;
+    if let Some(px) = position_x {
+        conn.execute("UPDATE agent_team_nodes SET position_x = ?1 WHERE id = ?2", params![px, &id])
+            .map_err(|e| format!("Failed: {}", e))?;
+    }
+    if let Some(py) = position_y {
+        conn.execute("UPDATE agent_team_nodes SET position_y = ?1 WHERE id = ?2", params![py, &id])
+            .map_err(|e| format!("Failed: {}", e))?;
+    }
+    if let Some(so) = sort_order {
+        conn.execute("UPDATE agent_team_nodes SET sort_order = ?1 WHERE id = ?2", params![so, &id])
+            .map_err(|e| format!("Failed: {}", e))?;
+    }
+    conn.query_row(
+        &format!("SELECT {} FROM agent_team_nodes WHERE id = ?1", TEAM_NODE_COLUMNS),
+        params![&id], row_to_team_node,
+    ).map_err(|e| format!("Node not found after update: {}", e))
+}
+
+#[tauri::command]
+pub async fn delete_team_node(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute("DELETE FROM agent_team_edges WHERE source_node_id = ?1 OR target_node_id = ?1", params![&id])
+        .map_err(|e| format!("Failed to delete node edges: {}", e))?;
+    conn.execute("DELETE FROM agent_team_nodes WHERE id = ?1", params![&id])
+        .map_err(|e| format!("Failed to delete node: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn batch_update_team_nodes(
+    updates: Vec<serde_json::Value>, app: tauri::AppHandle,
+) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    for u in &updates {
+        let id = u["id"].as_str().ok_or("Missing id in batch update")?;
+        let px = u["position_x"].as_f64();
+        let py = u["position_y"].as_f64();
+        if let (Some(x), Some(y)) = (px, py) {
+            conn.execute(
+                "UPDATE agent_team_nodes SET position_x = ?1, position_y = ?2 WHERE id = ?3",
+                params![x, y, id],
+            ).map_err(|e| format!("Failed to batch update node: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
+// --- Team Edges CRUD ---
+
+#[tauri::command]
+pub async fn list_team_edges(team_id: String, app: tauri::AppHandle) -> Result<Vec<AgentTeamEdgeRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM agent_team_edges WHERE team_id = ?1", TEAM_EDGE_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map(params![&team_id], row_to_team_edge)
+        .map_err(|e| format!("Failed to list edges: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn create_team_edge(
+    team_id: String, source_node_id: String, target_node_id: String,
+    edge_type: String, condition: Option<String>, data_mapping: String, label: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<AgentTeamEdgeRow, String> {
+    let conn = get_db_connection(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "INSERT INTO agent_team_edges (id, team_id, source_node_id, target_node_id, edge_type, condition, data_mapping, label, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![&id, &team_id, &source_node_id, &target_node_id, &edge_type, &condition, &data_mapping, &label, &now],
+    ).map_err(|e| format!("Failed to create edge: {}", e))?;
+    conn.query_row(
+        &format!("SELECT {} FROM agent_team_edges WHERE id = ?1", TEAM_EDGE_COLUMNS),
+        params![&id], row_to_team_edge,
+    ).map_err(|e| format!("Edge not found after create: {}", e))
+}
+
+#[tauri::command]
+pub async fn update_team_edge(
+    id: String, edge_type: Option<String>, condition: Option<String>,
+    data_mapping: Option<String>, label: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<AgentTeamEdgeRow, String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute(
+        "UPDATE agent_team_edges SET edge_type = COALESCE(?1, edge_type), condition = COALESCE(?2, condition),
+         data_mapping = COALESCE(?3, data_mapping), label = COALESCE(?4, label) WHERE id = ?5",
+        params![&edge_type, &condition, &data_mapping, &label, &id],
+    ).map_err(|e| format!("Failed to update edge: {}", e))?;
+    conn.query_row(
+        &format!("SELECT {} FROM agent_team_edges WHERE id = ?1", TEAM_EDGE_COLUMNS),
+        params![&id], row_to_team_edge,
+    ).map_err(|e| format!("Edge not found after update: {}", e))
+}
+
+#[tauri::command]
+pub async fn delete_team_edge(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute("DELETE FROM agent_team_edges WHERE id = ?1", params![&id])
+        .map_err(|e| format!("Failed to delete edge: {}", e))?;
+    Ok(())
+}
+
+// --- Team Runs CRUD ---
+
+#[tauri::command]
+pub async fn create_team_run(
+    team_id: String, project_id: String, input: String, execution_mode: String,
+    app: tauri::AppHandle,
+) -> Result<TeamRunRow, String> {
+    let conn = get_db_connection(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "INSERT INTO team_runs (id, team_id, project_id, status, input, execution_mode, total_tokens, total_cost, created_at, started_at)
+         VALUES (?1, ?2, ?3, 'running', ?4, ?5, 0, 0.0, ?6, ?7)",
+        params![&id, &team_id, &project_id, &input, &execution_mode, &now, &now],
+    ).map_err(|e| format!("Failed to create team run: {}", e))?;
+    conn.query_row(
+        &format!("SELECT {} FROM team_runs WHERE id = ?1", TEAM_RUN_COLUMNS),
+        params![&id], row_to_team_run,
+    ).map_err(|e| format!("Team run not found after create: {}", e))
+}
+
+#[tauri::command]
+pub async fn get_team_run(id: String, app: tauri::AppHandle) -> Result<Option<TeamRunRow>, String> {
+    let conn = get_db_connection(&app)?;
+    conn.query_row(
+        &format!("SELECT {} FROM team_runs WHERE id = ?1", TEAM_RUN_COLUMNS),
+        params![&id], row_to_team_run,
+    ).optional().map_err(|e| format!("Failed to get team run: {}", e))
+}
+
+#[tauri::command]
+pub async fn list_team_runs(team_id: String, project_id: String, app: tauri::AppHandle) -> Result<Vec<TeamRunRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM team_runs WHERE team_id = ?1 AND project_id = ?2 ORDER BY created_at DESC LIMIT 50", TEAM_RUN_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map(params![&team_id, &project_id], row_to_team_run)
+        .map_err(|e| format!("Failed to list team runs: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn update_team_run_status(
+    id: String, status: String, output: Option<String>,
+    total_tokens: Option<i32>, total_cost: Option<f64>,
+    duration_ms: Option<i64>, error: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+    let completed_at = if status == "completed" || status == "failed" { Some(now) } else { None };
+    conn.execute(
+        "UPDATE team_runs SET status = ?1, output = COALESCE(?2, output), total_tokens = COALESCE(?3, total_tokens),
+         total_cost = COALESCE(?4, total_cost), duration_ms = COALESCE(?5, duration_ms),
+         error = ?6, completed_at = COALESCE(?7, completed_at) WHERE id = ?8",
+        params![&status, &output, &total_tokens, &total_cost, &duration_ms, &error, &completed_at, &id],
+    ).map_err(|e| format!("Failed to update team run status: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_team_run(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute("DELETE FROM team_run_steps WHERE team_run_id = ?1", params![&id])
+        .map_err(|e| format!("Failed to delete team run steps: {}", e))?;
+    conn.execute("DELETE FROM team_runs WHERE id = ?1", params![&id])
+        .map_err(|e| format!("Failed to delete team run: {}", e))?;
+    Ok(())
+}
+
+// --- Phase 11: Schedule CRUD ---
+
+#[tauri::command]
+pub async fn list_schedules(app: tauri::AppHandle) -> Result<Vec<ScheduleRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM schedules ORDER BY created_at DESC", SCHEDULE_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map([], row_to_schedule)
+        .map_err(|e| format!("Failed to list schedules: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_schedule(id: String, app: tauri::AppHandle) -> Result<Option<ScheduleRow>, String> {
+    let conn = get_db_connection(&app)?;
+    conn.query_row(
+        &format!("SELECT {} FROM schedules WHERE id = ?1", SCHEDULE_COLUMNS),
+        params![&id], row_to_schedule,
+    ).optional().map_err(|e| format!("Failed to get schedule: {}", e))
+}
+
+#[tauri::command]
+pub async fn create_schedule(
+    name: String, target_type: String, target_id: String,
+    trigger_type: String, trigger_config: String,
+    is_active: Option<bool>,
+    app: tauri::AppHandle,
+) -> Result<ScheduleRow, String> {
+    let conn = get_db_connection(&app)?;
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().timestamp();
+    let active_int: i32 = if is_active.unwrap_or(false) { 1 } else { 0 };
+    conn.execute(
+        "INSERT INTO schedules (id, name, target_type, target_id, trigger_type, trigger_config, is_active, run_count, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9)",
+        params![&id, &name, &target_type, &target_id, &trigger_type, &trigger_config, &active_int, &now, &now],
+    ).map_err(|e| format!("Failed to create schedule: {}", e))?;
+    conn.query_row(
+        &format!("SELECT {} FROM schedules WHERE id = ?1", SCHEDULE_COLUMNS),
+        params![&id], row_to_schedule,
+    ).map_err(|e| format!("Schedule not found after create: {}", e))
+}
+
+#[tauri::command]
+pub async fn update_schedule(
+    id: String,
+    name: Option<String>, target_type: Option<String>, target_id: Option<String>,
+    trigger_type: Option<String>, trigger_config: Option<String>,
+    is_active: Option<bool>, next_run_at: Option<i64>,
+    app: tauri::AppHandle,
+) -> Result<ScheduleRow, String> {
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+    let is_active_int: Option<i32> = is_active.map(|b| if b { 1 } else { 0 });
+    conn.execute(
+        "UPDATE schedules SET name = COALESCE(?1, name), target_type = COALESCE(?2, target_type),
+         target_id = COALESCE(?3, target_id), trigger_type = COALESCE(?4, trigger_type),
+         trigger_config = COALESCE(?5, trigger_config), is_active = COALESCE(?6, is_active),
+         next_run_at = COALESCE(?7, next_run_at), updated_at = ?8 WHERE id = ?9",
+        params![&name, &target_type, &target_id, &trigger_type, &trigger_config, &is_active_int, &next_run_at, &now, &id],
+    ).map_err(|e| format!("Failed to update schedule: {}", e))?;
+    conn.query_row(
+        &format!("SELECT {} FROM schedules WHERE id = ?1", SCHEDULE_COLUMNS),
+        params![&id], row_to_schedule,
+    ).map_err(|e| format!("Schedule not found after update: {}", e))
+}
+
+#[tauri::command]
+pub async fn delete_schedule(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute("DELETE FROM schedules WHERE id = ?1", params![&id])
+        .map_err(|e| format!("Failed to delete schedule: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_active_schedules(app: tauri::AppHandle) -> Result<Vec<ScheduleRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM schedules WHERE is_active = 1 ORDER BY created_at ASC", SCHEDULE_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map([], row_to_schedule)
+        .map_err(|e| format!("Failed to list active schedules: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn update_schedule_run_status(
+    id: String, last_run_at: i64, next_run_at: Option<i64>, run_count: i32,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+    conn.execute(
+        "UPDATE schedules SET last_run_at = ?1, next_run_at = ?2, run_count = ?3, updated_at = ?4 WHERE id = ?5",
+        params![&last_run_at, &next_run_at, &run_count, &now, &id],
+    ).map_err(|e| format!("Failed to update schedule run status: {}", e))?;
+    Ok(())
+}
+
+// --- Phase 11: Trace Span CRUD ---
+
+#[tauri::command]
+pub async fn create_trace_span(
+    id: String, parent_span_id: Option<String>, run_id: String, run_type: String,
+    span_name: String, span_kind: String, input: String, metadata: String, started_at: i64,
+    app: tauri::AppHandle,
+) -> Result<TraceSpanRow, String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute(
+        "INSERT INTO trace_spans (id, parent_span_id, run_id, run_type, span_name, span_kind, input, status, metadata, started_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'running', ?8, ?9)",
+        params![&id, &parent_span_id, &run_id, &run_type, &span_name, &span_kind, &input, &metadata, &started_at],
+    ).map_err(|e| format!("Failed to create trace span: {}", e))?;
+    conn.query_row(
+        &format!("SELECT {} FROM trace_spans WHERE id = ?1", TRACE_SPAN_COLUMNS),
+        params![&id], row_to_trace_span,
+    ).map_err(|e| format!("Trace span not found after create: {}", e))
+}
+
+#[tauri::command]
+pub async fn update_trace_span(
+    id: String, output: Option<String>, status: Option<String>,
+    tokens: Option<i32>, cost: Option<f64>, ended_at: Option<i64>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute(
+        "UPDATE trace_spans SET output = COALESCE(?1, output), status = COALESCE(?2, status),
+         tokens = COALESCE(?3, tokens), cost = COALESCE(?4, cost), ended_at = COALESCE(?5, ended_at)
+         WHERE id = ?6",
+        params![&output, &status, &tokens, &cost, &ended_at, &id],
+    ).map_err(|e| format!("Failed to update trace span: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_trace_spans_for_run(run_id: String, app: tauri::AppHandle) -> Result<Vec<TraceSpanRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM trace_spans WHERE run_id = ?1 ORDER BY started_at ASC", TRACE_SPAN_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let rows = stmt.query_map(params![&run_id], row_to_trace_span)
+        .map_err(|e| format!("Failed to list trace spans: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_trace_span(id: String, app: tauri::AppHandle) -> Result<Option<TraceSpanRow>, String> {
+    let conn = get_db_connection(&app)?;
+    conn.query_row(
+        &format!("SELECT {} FROM trace_spans WHERE id = ?1", TRACE_SPAN_COLUMNS),
+        params![&id], row_to_trace_span,
+    ).optional().map_err(|e| format!("Failed to get trace span: {}", e))
+}
+
+#[tauri::command]
+pub async fn delete_trace_spans_for_run(run_id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute("DELETE FROM trace_spans WHERE run_id = ?1", params![&run_id])
+        .map_err(|e| format!("Failed to delete trace spans: {}", e))?;
+    Ok(())
+}
+
+// --- Phase 11: Analytics Commands ---
+
+#[tauri::command]
+pub async fn get_agent_analytics(start_date: String, end_date: String, app: tauri::AppHandle) -> Result<Vec<AgentAnalyticsRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.name,
+            COUNT(ar.id) as run_count,
+            COALESCE(SUM(ar.total_tokens), 0) as total_tokens,
+            COALESCE(SUM(ar.cost), 0.0) as total_cost,
+            COALESCE(AVG(ar.duration_ms), 0.0) as avg_duration_ms,
+            CASE WHEN COUNT(ar.id) > 0
+                THEN CAST(SUM(CASE WHEN ar.status = 'completed' THEN 1 ELSE 0 END) AS REAL) / COUNT(ar.id)
+                ELSE 0.0 END as success_rate
+         FROM agents a
+         LEFT JOIN agent_runs ar ON ar.agent_id = a.id
+            AND ar.created_at >= strftime('%s', ?1)
+            AND ar.created_at <= strftime('%s', ?2)
+         GROUP BY a.id, a.name
+         HAVING run_count > 0
+         ORDER BY run_count DESC"
+    ).map_err(|e| format!("Failed to prepare agent analytics: {}", e))?;
+    let rows = stmt.query_map(params![&start_date, &end_date], |row| {
+        Ok(AgentAnalyticsRow {
+            agent_id: row.get(0)?,
+            agent_name: row.get(1)?,
+            run_count: row.get(2)?,
+            total_tokens: row.get(3)?,
+            total_cost: row.get(4)?,
+            avg_duration_ms: row.get(5)?,
+            success_rate: row.get(6)?,
+        })
+    }).map_err(|e| format!("Failed to query agent analytics: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_skill_usage_analytics(start_date: String, end_date: String, app: tauri::AppHandle) -> Result<Vec<SkillUsageRow>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        "SELECT ar.skill_id, COALESCE(s.name, ar.skill_id) as skill_name,
+            COUNT(ar.id) as run_count,
+            COALESCE(SUM(ar.total_tokens), 0) as total_tokens,
+            COALESCE(SUM(ar.cost), 0.0) as total_cost
+         FROM agent_runs ar
+         LEFT JOIN skills s ON s.id = ar.skill_id
+         WHERE ar.skill_id IS NOT NULL AND ar.skill_id != ''
+            AND ar.created_at >= strftime('%s', ?1)
+            AND ar.created_at <= strftime('%s', ?2)
+         GROUP BY ar.skill_id
+         ORDER BY run_count DESC"
+    ).map_err(|e| format!("Failed to prepare skill usage analytics: {}", e))?;
+    let rows = stmt.query_map(params![&start_date, &end_date], |row| {
+        Ok(SkillUsageRow {
+            skill_id: row.get(0)?,
+            skill_name: row.get(1)?,
+            run_count: row.get(2)?,
+            total_tokens: row.get(3)?,
+            total_cost: row.get(4)?,
+        })
+    }).map_err(|e| format!("Failed to query skill usage analytics: {}", e))?;
+    let mut results = Vec::new();
+    for row in rows { results.push(row.map_err(|e| format!("Row error: {}", e))?); }
+    Ok(results)
+}
+
+// --- Seed Skills & Agents ---
+
+fn seed_skills(conn: &Connection) -> Result<(), String> {
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM skills WHERE is_builtin = 1", [], |row| row.get(0)).unwrap_or(0);
+    if count >= 30 { return Ok(()); }
+
+    let now = Utc::now().timestamp();
+
+    let categories = vec![
+        ("strategy", "Strategy", "Strategic thinking and planning skills", "chess"),
+        ("research", "Research", "User research and discovery skills", "search"),
+        ("execution", "Execution", "Shipping and delivery skills", "rocket"),
+        ("leadership", "Leadership", "People and stakeholder skills", "users"),
+        ("growth", "Growth", "Growth and monetization skills", "trending-up"),
+        ("gtm", "Go-to-Market", "Launch and marketing skills", "megaphone"),
+        ("ai", "AI & Technology", "AI product and technology skills", "cpu"),
+        ("career", "Career", "Career development skills", "graduation-cap"),
+    ];
+
+    for (i, (id, name, desc, icon)) in categories.iter().enumerate() {
+        conn.execute(
+            "INSERT OR IGNORE INTO skill_categories (id, name, description, icon, sort_order, is_builtin, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7)",
+            params![id, name, desc, icon, i as i32, &now, &now],
+        ).map_err(|e| format!("Failed to seed skill category: {}", e))?;
+    }
+
+    let skills: Vec<(&str, &str, &str, &str, &str, &str)> = vec![
+        ("writing-prds", "Writing PRDs", "strategy", "sonnet",
+         "Create comprehensive Product Requirement Documents",
+         "You are an expert product manager specializing in writing PRDs. Structure your PRDs with: Problem Statement, Goals & Success Metrics, User Stories, Requirements (functional & non-functional), Scope (in/out), Dependencies, Timeline, and Open Questions. Use clear, measurable acceptance criteria. Focus on the 'why' before the 'what'. Include edge cases and error states. Write for both engineering and stakeholder audiences."),
+        ("prioritizing-roadmap", "Prioritizing Roadmap", "strategy", "sonnet",
+         "Prioritize features and roadmap items using proven frameworks",
+         "You are an expert at product prioritization. Apply frameworks like RICE (Reach, Impact, Confidence, Effort), ICE, MoSCoW, or weighted scoring. Consider: business impact, user value, technical effort, strategic alignment, dependencies, and opportunity cost. Present a ranked list with clear rationale. Identify quick wins vs. strategic bets. Help resolve disagreements with data-driven arguments."),
+        ("defining-product-vision", "Defining Product Vision", "strategy", "opus",
+         "Create compelling product vision and strategy",
+         "You are a visionary product strategist. Help define: the product vision (3-5 year aspirational statement), mission (how you'll get there), strategic pillars, target audience, key differentiators, and success metrics. Use frameworks like Playing to Win or Crossing the Chasm when relevant. Ensure the vision is inspiring yet actionable, balancing ambition with market reality."),
+        ("setting-okrs", "Setting OKRs & Goals", "strategy", "sonnet",
+         "Define clear Objectives and Key Results",
+         "You are an OKR expert. Help define SMART objectives that are ambitious yet achievable. Each objective should have 2-5 measurable key results. Ensure alignment with company strategy. Distinguish between committed OKRs (must-hit) and aspirational OKRs (stretch goals). Include leading indicators, not just lagging metrics. Avoid vanity metrics."),
+        ("evaluating-trade-offs", "Evaluating Trade-offs", "strategy", "opus",
+         "Analyze complex product decisions and trade-offs",
+         "You are a strategic decision analyst. Present trade-offs clearly using: options comparison matrix, risk assessment, reversibility analysis, and second-order effects. Apply frameworks like DACI for decision-making. Consider technical debt, user experience, business metrics, and competitive dynamics. Always recommend a path forward with clear reasoning."),
+        ("scoping-cutting", "Scoping & Cutting", "strategy", "sonnet",
+         "Define MVPs and scope projects effectively",
+         "You are a scope management expert. Help define minimum viable products by distinguishing must-haves from nice-to-haves. Apply the 80/20 rule ruthlessly. Identify the smallest increment that delivers meaningful value. Create clear cut criteria. Use timeboxing and fixed-scope approaches. Balance shipping speed with quality thresholds."),
+        ("writing-specs", "Writing Specs & Designs", "strategy", "sonnet",
+         "Write detailed technical and product specifications",
+         "You are a spec writing expert. Create detailed specifications that include: context and background, proposed solution, technical design, API contracts, data models, UI wireframes (text-based), migration plan, rollback strategy, and testing approach. Write specs that engineering teams can implement without ambiguity."),
+        ("user-interviews", "Conducting User Interviews", "research", "sonnet",
+         "Design and analyze user interview protocols",
+         "You are a user research expert specializing in qualitative interviews. Help design interview guides with open-ended questions that avoid leading bias. Structure interviews: warm-up, context gathering, deep dive, and wrap-up. Teach the 5 Whys technique. Help synthesize findings into actionable insights. Create empathy maps and journey maps from interview data."),
+        ("analyzing-feedback", "Analyzing User Feedback", "research", "haiku",
+         "Synthesize and prioritize user feedback",
+         "You analyze user feedback efficiently. Categorize feedback by theme, frequency, and severity. Identify patterns across channels (NPS, support tickets, reviews, surveys). Separate signal from noise. Prioritize feedback by user segment and business impact. Create actionable summaries with recommended next steps."),
+        ("competitive-analysis", "Competitive Analysis", "research", "sonnet",
+         "Analyze competitive landscape and positioning",
+         "You are a competitive intelligence analyst. Create detailed competitive analyses covering: market landscape, feature comparison matrices, pricing analysis, SWOT per competitor, strategic positioning, differentiation opportunities, and threat assessment. Track competitor moves and market trends. Recommend competitive responses."),
+        ("problem-definition", "Problem Definition", "research", "sonnet",
+         "Define problems clearly before jumping to solutions",
+         "You are a problem framing expert. Help define problems using: problem statement templates, Jobs-to-be-Done framework, current vs. desired state analysis, root cause analysis (5 Whys, Fishbone), impact quantification, and stakeholder impact mapping. Ensure problems are specific, measurable, and validated before proceeding to solutions."),
+        ("designing-surveys", "Designing Surveys", "research", "haiku",
+         "Create effective surveys and questionnaires",
+         "You design surveys that generate actionable data. Apply survey methodology best practices: clear question phrasing, appropriate scales (Likert, NPS, semantic differential), logical flow, minimal bias, proper branching logic. Keep surveys concise. Include screening questions. Plan for statistical analysis."),
+        ("usability-testing", "Usability Testing", "research", "sonnet",
+         "Plan and analyze usability test sessions",
+         "You are a usability testing expert. Help plan test sessions: task scenarios, success criteria, think-aloud protocol, moderation scripts, and recording setup. Analyze results: task completion rates, error rates, time-on-task, SUS scores, and qualitative observations. Prioritize findings by severity and frequency."),
+        ("shipping-products", "Shipping Products", "execution", "sonnet",
+         "Plan and execute product launches",
+         "You are a shipping expert. Help plan launches with: pre-launch checklists, feature flags strategy, gradual rollout plans, monitoring dashboards, rollback procedures, and success criteria. Apply the 'ship, measure, iterate' mindset. Balance quality with velocity. Create go/no-go decision frameworks."),
+        ("managing-timelines", "Managing Timelines", "execution", "haiku",
+         "Set realistic timelines and track progress",
+         "You help manage product timelines. Create realistic project plans with milestones, dependencies, and buffer time. Apply estimation techniques: t-shirt sizing, story points, planning poker. Identify critical path items. Create status update templates. Help communicate timeline changes to stakeholders."),
+        ("post-mortems", "Post-mortems & Retros", "execution", "sonnet",
+         "Run effective post-mortems and retrospectives",
+         "You facilitate blameless post-mortems. Structure reviews: timeline of events, what went well, what went wrong, root cause analysis, action items with owners and deadlines. Apply the 5 Whys. Create templates for incident reviews and sprint retros. Ensure psychological safety. Focus on systemic improvements, not individual blame."),
+        ("decision-processes", "Running Decision Processes", "execution", "sonnet",
+         "Facilitate structured decision-making",
+         "You facilitate effective decisions. Apply DACI (Driver, Approver, Contributors, Informed), RAPID, or consent-based methods. Structure decisions: context, options, criteria, evaluation, recommendation, and commitment. Document decisions and rationale. Set clear deadlines. Handle disagreements with 'disagree and commit'."),
+        ("managing-tech-debt", "Managing Tech Debt", "execution", "sonnet",
+         "Strategically manage technical debt",
+         "You help manage technical debt strategically. Categorize debt: deliberate vs. accidental, high vs. low interest. Quantify impact on velocity and reliability. Create a tech debt backlog with clear business impact descriptions. Negotiate debt reduction time with stakeholders. Balance new features with sustainability."),
+        ("stakeholder-alignment", "Stakeholder Alignment", "leadership", "opus",
+         "Align stakeholders and build consensus",
+         "You are a stakeholder management expert. Help map stakeholders (influence/interest matrix), understand motivations, craft targeted communication strategies, manage expectations, and build consensus. Create RACI matrices. Design alignment workshops. Handle escalations diplomatically. Turn resistors into champions."),
+        ("managing-up", "Managing Up", "leadership", "sonnet",
+         "Work effectively with executives and leadership",
+         "You help PMs manage up effectively. Craft executive summaries, manage expectations, present data-driven recommendations, and navigate organizational politics. Learn your leader's communication style and decision-making preferences. Proactively share context. Flag risks early with mitigation plans. Build trust through consistent delivery."),
+        ("giving-presentations", "Giving Presentations", "leadership", "sonnet",
+         "Create and deliver compelling presentations",
+         "You help create compelling PM presentations. Structure narratives: hook, context, insight, recommendation, ask. Apply the Pyramid Principle (MECE). Design slides for executive audiences: one key message per slide, data visualization best practices, clear call-to-action. Prepare for Q&A."),
+        ("running-meetings", "Running Effective Meetings", "leadership", "haiku",
+         "Design and facilitate productive meetings",
+         "You help run effective meetings. Create agendas with clear objectives and time allocations. Define roles: facilitator, note-taker, timekeeper. Apply facilitation techniques: parking lot, round-robin, dot voting. End with clear action items, owners, and deadlines. Evaluate if a meeting is needed vs. async communication."),
+        ("cross-functional", "Cross-functional Collaboration", "leadership", "sonnet",
+         "Work effectively across engineering, design, and business teams",
+         "You help PMs collaborate across functions. Navigate the PM-engineering relationship: speak their language, respect technical constraints, involve early. Work with design: embrace iteration, provide clear constraints. Partner with business: translate metrics, align incentives. Build shared understanding and trust."),
+        ("growth-loops", "Designing Growth Loops", "growth", "opus",
+         "Design sustainable product-led growth loops",
+         "You are a growth strategy expert. Design viral loops, content loops, paid loops, and ecosystem loops. Map the full loop: trigger, action, reward, investment. Identify leverage points and friction. Model loop economics. Balance acquisition, activation, retention, and monetization. Avoid growth hacks in favor of sustainable loops."),
+        ("pricing-strategy", "Pricing Strategy", "growth", "opus",
+         "Design and optimize pricing models",
+         "You are a pricing strategist. Analyze value metrics, willingness to pay, competitive pricing, and cost structures. Design pricing tiers (good/better/best), freemium strategies, usage-based models, or hybrid approaches. Model revenue impact. Plan pricing experiments. Handle pricing changes and grandfather clauses."),
+        ("retention-engagement", "Retention & Engagement", "growth", "sonnet",
+         "Improve user retention and engagement",
+         "You specialize in retention and engagement. Analyze cohort retention curves, identify drop-off points, design onboarding sequences, create habit-forming features (Hook Model), implement re-engagement campaigns. Distinguish between natural churn and preventable churn. Measure leading indicators: feature adoption, aha moments, activation rates."),
+        ("measuring-pmf", "Measuring Product-Market Fit", "growth", "sonnet",
+         "Assess and improve product-market fit",
+         "You help measure and achieve product-market fit. Apply Sean Ellis survey ('how disappointed would you be?'), retention curve analysis, NPS segmentation, and qualitative feedback synthesis. Identify your ideal customer profile. Track PMF indicators: organic growth, word-of-mouth, usage frequency. Guide the journey from initial traction to strong PMF."),
+        ("launch-marketing", "Launch Marketing", "gtm", "sonnet",
+         "Plan and execute go-to-market launches",
+         "You are a product launch expert. Create comprehensive launch plans: positioning, messaging, channel strategy, timeline, assets needed, sales enablement, success metrics. Design launch tiers (soft launch, beta, GA). Coordinate cross-functional launch teams. Create launch briefs and press-ready materials."),
+        ("positioning-messaging", "Positioning & Messaging", "gtm", "sonnet",
+         "Craft product positioning and messaging",
+         "You are a positioning expert. Apply frameworks: April Dunford's positioning canvas, Geoffrey Moore's positioning statement. Define target audience, market category, key differentiator, proof points, and emotional benefits. Create messaging hierarchies for different audiences. Test positioning with customers."),
+        ("ai-product-strategy", "AI Product Strategy", "ai", "opus",
+         "Define strategy for AI-powered products",
+         "You are an AI product strategy expert. Help define: where AI adds real value vs. hype, build vs. buy decisions for AI capabilities, data strategy and requirements, responsible AI practices, AI UX patterns (human-in-the-loop, confidence levels), model selection and evaluation, and cost management. Navigate the rapidly evolving AI landscape."),
+    ];
+
+    for (i, (id, name, category, model_tier, description, system_prompt)) in skills.iter().enumerate() {
+        conn.execute(
+            "INSERT OR IGNORE INTO skills (id, name, description, category, system_prompt, tools, model_tier, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, '[]', ?6, 1, 0, 0, ?7, ?8, ?9)",
+            params![id, name, description, category, system_prompt, model_tier, i as i32, &now, &now],
+        ).map_err(|e| format!("Failed to seed skill: {}", e))?;
+    }
+
+    Ok(())
+}
+
+fn seed_agents(conn: &Connection) -> Result<(), String> {
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM agents WHERE is_builtin = 1", [], |row| row.get(0)).unwrap_or(0);
+    if count >= 6 { return Ok(()); }
+
+    let now = Utc::now().timestamp();
+
+    let agents: Vec<(&str, &str, &str, &str, &str, &str, &str, &str)> = vec![
+        ("prd-writer-agent", "PRD Writer", "Create structured, comprehensive PRDs from problem statements",
+         "file-text",
+         r#"["writing-prds","problem-definition","evaluating-trade-offs"]"#,
+         "claude-sonnet-4-5", "anthropic",
+         "You are a senior product manager who writes excellent PRDs. When given a problem or feature request, you first clearly define the problem, evaluate trade-offs, then produce a well-structured PRD. Ask clarifying questions when requirements are ambiguous. Output in markdown format."),
+        ("strategy-advisor-agent", "Strategy Advisor", "Provide strategic analysis and product recommendations",
+         "compass",
+         r#"["defining-product-vision","evaluating-trade-offs","prioritizing-roadmap","stakeholder-alignment"]"#,
+         "claude-sonnet-4-5", "anthropic",
+         "You are a seasoned product strategy advisor. Analyze situations holistically considering market dynamics, competitive landscape, user needs, and business goals. Provide actionable strategic recommendations backed by frameworks and data. Challenge assumptions constructively."),
+        ("user-researcher-agent", "User Researcher", "Design research studies and synthesize insights",
+         "microscope",
+         r#"["user-interviews","analyzing-feedback","designing-surveys","problem-definition"]"#,
+         "claude-sonnet-4-5", "anthropic",
+         "You are an experienced user researcher. Help design research plans, create interview guides, design surveys, and synthesize findings into actionable insights. Apply rigorous research methodology while remaining practical. Focus on uncovering user needs, behaviors, and motivations."),
+        ("competitive-intel-agent", "Competitive Intel", "Analyze competitive landscape and positioning",
+         "target",
+         r#"["competitive-analysis","positioning-messaging","measuring-pmf"]"#,
+         "claude-sonnet-4-5", "anthropic",
+         "You are a competitive intelligence analyst. Analyze market landscapes, competitor strategies, and positioning opportunities. Provide SWOT analyses, feature comparisons, and strategic recommendations. Help identify differentiation opportunities and competitive threats."),
+        ("growth-pm-agent", "Growth PM", "Design growth strategies and experiment plans",
+         "trending-up",
+         r#"["growth-loops","retention-engagement","pricing-strategy","measuring-pmf"]"#,
+         "claude-sonnet-4-5", "anthropic",
+         "You are a growth product expert. Design growth loops, retention strategies, pricing models, and experiment plans. Apply data-driven thinking to identify growth opportunities. Balance short-term growth tactics with sustainable, long-term strategies. Focus on metrics that matter."),
+        ("launch-captain-agent", "Launch Captain", "Plan and coordinate product launches",
+         "rocket",
+         r#"["launch-marketing","shipping-products","managing-timelines","giving-presentations"]"#,
+         "claude-sonnet-4-5", "anthropic",
+         "You are a product launch expert. Create comprehensive launch plans covering positioning, timing, channels, success metrics, and cross-functional coordination. Manage launch timelines, prepare stakeholder communications, and design rollout strategies. Balance thoroughness with speed."),
+    ];
+
+    for (i, (id, name, description, icon, skill_ids, model, provider, instructions)) in agents.iter().enumerate() {
+        conn.execute(
+            "INSERT OR IGNORE INTO agents (id, name, description, icon, system_instructions, skill_ids, model, provider, max_tokens, temperature, tools_config, context_strategy, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 4096, 0.7, '{}', 'auto', 1, 0, 0, ?9, ?10, ?11)",
+            params![id, name, description, icon, instructions, skill_ids, model, provider, i as i32, &now, &now],
+        ).map_err(|e| format!("Failed to seed agent: {}", e))?;
+    }
+
     Ok(())
 }

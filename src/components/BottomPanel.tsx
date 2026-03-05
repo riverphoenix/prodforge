@@ -9,7 +9,7 @@ interface BottomPanelProps {
   initialTab?: PanelTab;
 }
 
-type PanelTab = 'terminal' | 'errors';
+type PanelTab = 'terminal' | 'errors' | 'tracing';
 
 export default function BottomPanel({ height, projectId, onClose, initialTab }: BottomPanelProps) {
   const [activeTab, setActiveTab] = useState<PanelTab>(initialTab || 'terminal');
@@ -91,7 +91,7 @@ export default function BottomPanel({ height, projectId, onClose, initialTab }: 
           backgroundColor: '#010409',
         }}
       >
-        {(['terminal', 'errors'] as PanelTab[]).map((tab) => (
+        {(['terminal', 'errors', 'tracing'] as PanelTab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -137,6 +137,10 @@ export default function BottomPanel({ height, projectId, onClose, initialTab }: 
       <div className="flex-1 overflow-hidden">
         {activeTab === 'terminal' ? (
           <TerminalTabs projectId={projectId} />
+        ) : activeTab === 'tracing' ? (
+          <div className="h-full flex items-center justify-center" style={{ backgroundColor: '#0d1117' }}>
+            <span style={{ color: '#484f58', fontSize: '12px' }}>Select an agent or team run to view traces</span>
+          </div>
         ) : activeTab === 'errors' ? (
           <div
             ref={errorsRef}

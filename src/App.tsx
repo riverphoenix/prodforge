@@ -21,7 +21,7 @@ import { Project, Conversation, FrameworkDefinition, SavedPrompt, FrameworkOutpu
 import ModelSelector from './components/ModelSelector';
 
 type View = 'welcome' | 'project' | 'settings';
-type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor';
+type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'schedules';
 
 const MIN_BOTTOM_PANEL_HEIGHT = 100;
 const MAX_BOTTOM_PANEL_RATIO = 0.5;
@@ -34,6 +34,10 @@ const TAB_ICONS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'prompts', label: 'Prompts', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg> },
   { id: 'context', label: 'Context', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg> },
   { id: 'outputs', label: 'Outputs', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" /></svg> },
+  { id: 'skills', label: 'Skills', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg> },
+  { id: 'agents', label: 'Agents', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" /></svg> },
+  { id: 'teams', label: 'Teams', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" /></svg> },
+  { id: 'schedules', label: 'Schedules', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
 ];
 
 function formatRelativeTime(timestamp: number): string {
@@ -260,6 +264,10 @@ function App() {
     'tab-prompts': () => { if (currentProjectId) { setActiveTab('prompts'); setCurrentView('project'); } },
     'tab-context': () => { if (currentProjectId) { setActiveTab('context'); setCurrentView('project'); } },
     'tab-outputs': () => { if (currentProjectId) { setActiveTab('outputs'); setCurrentView('project'); } },
+    'tab-skills': () => { if (currentProjectId) { setActiveTab('skills'); setCurrentView('project'); } },
+    'tab-agents': () => { if (currentProjectId) { setActiveTab('agents'); setCurrentView('project'); } },
+    'tab-teams': () => { if (currentProjectId) { setActiveTab('teams'); setCurrentView('project'); } },
+    'tab-schedules': () => { if (currentProjectId) { setActiveTab('schedules'); setCurrentView('project'); } },
     'toggle-terminal': () => setBottomPanelVisible(v => !v),
     'toggle-sidebar': () => setThreadsOpen(v => !v),
     'layout-single': () => handleLayoutChange('single'),
@@ -282,6 +290,11 @@ function App() {
     { id: 'nav-prompts', label: 'Prompts', category: 'Navigation', shortcut: '\u23185', keywords: ['templates', 'saved'], action: () => { if (currentProjectId) { setActiveTab('prompts'); setCurrentView('project'); } } },
     { id: 'nav-context', label: 'Context', category: 'Navigation', shortcut: '\u23186', keywords: ['docs', 'upload'], action: () => { if (currentProjectId) { setActiveTab('context'); setCurrentView('project'); } } },
     { id: 'nav-outputs', label: 'Outputs', category: 'Navigation', shortcut: '\u23187', keywords: ['generated', 'library'], action: () => { if (currentProjectId) { setActiveTab('outputs'); setCurrentView('project'); } } },
+    { id: 'nav-skills', label: 'Skills', category: 'Navigation', shortcut: '\u23189', keywords: ['pm', 'abilities', 'lightning'], action: () => { if (currentProjectId) { setActiveTab('skills'); setCurrentView('project'); } } },
+    { id: 'nav-agents', label: 'Agents', category: 'Navigation', shortcut: '\u23180', keywords: ['ai', 'assistant', 'automation'], action: () => { if (currentProjectId) { setActiveTab('agents'); setCurrentView('project'); } } },
+    { id: 'nav-teams', label: 'Teams', category: 'Navigation', shortcut: '\u2318\u21E7T', keywords: ['multi-agent', 'workflow', 'orchestration', 'group'], action: () => { if (currentProjectId) { setActiveTab('teams'); setCurrentView('project'); } } },
+    { id: 'nav-schedules', label: 'Schedules', category: 'Navigation', shortcut: '\u2318\u21E7S', keywords: ['cron', 'interval', 'timer', 'automated'], action: () => { if (currentProjectId) { setActiveTab('schedules'); setCurrentView('project'); } } },
+    { id: 'panel-tracing', label: 'Tracing', category: 'Panels', keywords: ['spans', 'observability', 'trace', 'debug'], action: () => { setBottomPanelVisible(true); setBottomPanelTab('tracing'); } },
     { id: 'panel-terminal', label: 'Toggle Terminal', category: 'Panels', shortcut: '\u2318`', action: () => setBottomPanelVisible(v => !v) },
     { id: 'panel-threads', label: 'Toggle Projects', category: 'Panels', shortcut: '\u2318B', action: () => setThreadsOpen(v => !v) },
     { id: 'panel-focus', label: 'Toggle Focus Mode', category: 'Panels', shortcut: '\u2318\u21e7F', keywords: ['distraction', 'zen'], action: () => setFocusMode(v => !v) },
@@ -352,12 +365,96 @@ function App() {
             } catch { /* ignore */ }
           }
         }}
+        onToggleSkills={async () => {
+          if (currentProjectId) {
+            setActiveTab('skills');
+            setCurrentView('project');
+          } else {
+            try {
+              let projects = await projectsAPI.list();
+              let targetId: string;
+              if (!projects || projects.length === 0) {
+                const np = await projectsAPI.create('My First Project');
+                targetId = np.id;
+              } else {
+                targetId = projects[0].id;
+              }
+              setCurrentProjectId(targetId);
+              setActiveTab('skills');
+              setCurrentView('project');
+            } catch { /* ignore */ }
+          }
+        }}
+        onToggleAgents={async () => {
+          if (currentProjectId) {
+            setActiveTab('agents');
+            setCurrentView('project');
+          } else {
+            try {
+              let projects = await projectsAPI.list();
+              let targetId: string;
+              if (!projects || projects.length === 0) {
+                const np = await projectsAPI.create('My First Project');
+                targetId = np.id;
+              } else {
+                targetId = projects[0].id;
+              }
+              setCurrentProjectId(targetId);
+              setActiveTab('agents');
+              setCurrentView('project');
+            } catch { /* ignore */ }
+          }
+        }}
+        onToggleTeams={async () => {
+          if (currentProjectId) {
+            setActiveTab('teams');
+            setCurrentView('project');
+          } else {
+            try {
+              let projects = await projectsAPI.list();
+              let targetId: string;
+              if (!projects || projects.length === 0) {
+                const np = await projectsAPI.create('My First Project');
+                targetId = np.id;
+              } else {
+                targetId = projects[0].id;
+              }
+              setCurrentProjectId(targetId);
+              setActiveTab('teams');
+              setCurrentView('project');
+            } catch { /* ignore */ }
+          }
+        }}
+        onToggleSchedules={async () => {
+          if (currentProjectId) {
+            setActiveTab('schedules');
+            setCurrentView('project');
+          } else {
+            try {
+              let projects = await projectsAPI.list();
+              let targetId: string;
+              if (!projects || projects.length === 0) {
+                const np = await projectsAPI.create('My First Project');
+                targetId = np.id;
+              } else {
+                targetId = projects[0].id;
+              }
+              setCurrentProjectId(targetId);
+              setActiveTab('schedules');
+              setCurrentView('project');
+            } catch { /* ignore */ }
+          }
+        }}
         onSettingsClick={handleSettingsClick}
         onHomeClick={handleHomeClick}
         threadsOpen={threadsOpen}
         terminalActive={bottomPanelVisible}
         chatActive={activeTab === 'chat' && currentView === 'project'}
         editorActive={activeTab === 'editor' && currentView === 'project'}
+        skillsActive={activeTab === 'skills' && currentView === 'project'}
+        agentsActive={activeTab === 'agents' && currentView === 'project'}
+        teamsActive={activeTab === 'teams' && currentView === 'project'}
+        schedulesActive={activeTab === 'schedules' && currentView === 'project'}
         isSettings={currentView === 'settings'}
         isHome={currentView === 'welcome'}
       />

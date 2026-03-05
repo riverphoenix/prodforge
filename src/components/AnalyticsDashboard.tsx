@@ -1,6 +1,6 @@
 import { useState, useEffect, Component, ReactNode } from 'react';
-import { tokenUsageAPI } from '../lib/ipc';
-import { TokenUsageAggregate, TokenUsage } from '../lib/types';
+import { tokenUsageAPI, analyticsAPI } from '../lib/ipc';
+import { TokenUsageAggregate, TokenUsage, AgentAnalytics, SkillUsageAnalytics } from '../lib/types';
 import LineChart from './charts/LineChart';
 import PieChart from './charts/PieChart';
 import BarChart from './charts/BarChart';
@@ -45,6 +45,8 @@ function AnalyticsDashboardInner() {
   const [allUsage, setAllUsage] = useState<TokenUsage[]>([]);
   const [providerData, setProviderData] = useState<Array<{ provider: string; cost: number; total_tokens: number }>>([]);
   const [modelData, setModelData] = useState<Array<{ model: string; cost: number; total_tokens: number }>>([]);
+  const [agentAnalytics, setAgentAnalytics] = useState<AgentAnalytics[]>([]);
+  const [skillAnalytics, setSkillAnalytics] = useState<SkillUsageAnalytics[]>([]);
 
   const getDateRange = (): { start: string; end: string } => {
     const end = customEnd || new Date().toISOString().split('T')[0];
@@ -68,6 +70,8 @@ function AnalyticsDashboardInner() {
         tokenUsageAPI.getAll(),
         tokenUsageAPI.getByProvider(start, end),
         tokenUsageAPI.getByModel(start, end),
+        analyticsAPI.getAgentAnalytics(start, end),
+        analyticsAPI.getSkillUsageAnalytics(start, end),
       ]);
       const safe = <T,>(r: PromiseSettledResult<T>, fallback: T): T =>
         r.status === 'fulfilled' && r.value ? r.value : fallback;
@@ -75,6 +79,8 @@ function AnalyticsDashboardInner() {
       setAllUsage(safe(results[1], []) as TokenUsage[]);
       setProviderData(safe(results[2], []) as Array<{ provider: string; cost: number; total_tokens: number }>);
       setModelData(safe(results[3], []) as Array<{ model: string; cost: number; total_tokens: number }>);
+      setAgentAnalytics(safe(results[4], []) as AgentAnalytics[]);
+      setSkillAnalytics(safe(results[5], []) as SkillUsageAnalytics[]);
     } catch (err) {
       console.error('Failed to load analytics:', err);
       setLoadError(err instanceof Error ? err.message : 'Failed to load data');
@@ -179,7 +185,7 @@ function AnalyticsDashboardInner() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
           <div className="text-xs text-codex-text-muted mb-1">Total Tokens</div>
           <div className="text-xl font-semibold text-codex-text-primary">{totalTokens.toLocaleString()}</div>
@@ -195,6 +201,11 @@ function AnalyticsDashboardInner() {
         <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
           <div className="text-xs text-codex-text-muted mb-1">Avg Cost/Day</div>
           <div className="text-xl font-semibold text-codex-text-primary">${avgCostPerDay.toFixed(4)}</div>
+        </div>
+        <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
+          <div className="text-xs text-codex-text-muted mb-1">Projected Monthly</div>
+          <div className="text-xl font-semibold text-codex-accent">${(avgCostPerDay * 30).toFixed(2)}</div>
+          <div className="text-[9px] text-codex-text-muted mt-1">Based on avg daily cost</div>
         </div>
       </div>
 
@@ -232,6 +243,62 @@ function AnalyticsDashboardInner() {
           height={Math.max(140, (modelData || []).length * 34)}
           formatValue={(v) => `$${(v || 0).toFixed(4)}`}
         />
+      </div>
+
+      {/* Agent & Skill Analytics */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
+          <h3 className="text-sm font-medium text-codex-text-primary mb-3">Agent Performance</h3>
+          {agentAnalytics.length === 0 ? (
+            <div className="text-center py-6 text-codex-text-muted text-xs">No agent runs in this period</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-codex-border">
+                    <th className="text-left py-1.5 px-2 text-codex-text-muted font-medium">Agent</th>
+                    <th className="text-right py-1.5 px-2 text-codex-text-muted font-medium">Runs</th>
+                    <th className="text-right py-1.5 px-2 text-codex-text-muted font-medium">Tokens</th>
+                    <th className="text-right py-1.5 px-2 text-codex-text-muted font-medium">Cost</th>
+                    <th className="text-right py-1.5 px-2 text-codex-text-muted font-medium">Avg Time</th>
+                    <th className="text-right py-1.5 px-2 text-codex-text-muted font-medium">Success</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agentAnalytics.slice(0, 10).map(a => (
+                    <tr key={a.agent_id} className="border-b border-codex-border/30 hover:bg-codex-surface/30">
+                      <td className="py-1.5 px-2 text-codex-text-primary">{a.agent_name}</td>
+                      <td className="py-1.5 px-2 text-right text-codex-text-secondary">{a.run_count}</td>
+                      <td className="py-1.5 px-2 text-right text-codex-text-secondary">{a.total_tokens.toLocaleString()}</td>
+                      <td className="py-1.5 px-2 text-right text-codex-accent">${a.total_cost.toFixed(4)}</td>
+                      <td className="py-1.5 px-2 text-right text-codex-text-secondary">{(a.avg_duration_ms / 1000).toFixed(1)}s</td>
+                      <td className="py-1.5 px-2 text-right">
+                        <span className={a.success_rate >= 0.8 ? 'text-green-400' : a.success_rate >= 0.5 ? 'text-amber-400' : 'text-red-400'}>
+                          {(a.success_rate * 100).toFixed(0)}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
+          <h3 className="text-sm font-medium text-codex-text-primary mb-3">Skill Usage</h3>
+          {skillAnalytics.length === 0 ? (
+            <div className="text-center py-6 text-codex-text-muted text-xs">No skill usage in this period</div>
+          ) : (
+            <BarChart
+              data={skillAnalytics
+                .sort((a, b) => b.run_count - a.run_count)
+                .slice(0, 10)
+                .map(s => ({ label: s.skill_name, value: s.run_count }))}
+              height={Math.max(140, Math.min(skillAnalytics.length, 10) * 34)}
+              formatValue={(v) => `${v} uses`}
+            />
+          )}
+        </div>
       </div>
 
       {/* Generation history */}

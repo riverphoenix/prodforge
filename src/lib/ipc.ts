@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { Project, Conversation, Message, Settings, SettingsUpdate, TokenUsage, TokenUsageAggregate, ContextDocument, FrameworkOutput, Folder, SearchResult, CommandHistoryEntry, CommandResult, FrameworkDefinition, FrameworkCategory, SavedPrompt, PromptVariable, ImportPreview, ImportResult, BatchExportResult, ConflictAction, Workflow, WorkflowRun, WorkflowRunStep, ProjectInsight, CommitInfo, JiraProject, JiraExportResult, NotionPage, NotionExportResult, FileEntry, LLMProvider, ProviderInfo, GitFileStatus, GitBranchInfo, GitLogEntry, GitRemoteInfo } from './types';
+import { Project, Conversation, Message, Settings, SettingsUpdate, TokenUsage, TokenUsageAggregate, ContextDocument, FrameworkOutput, Folder, SearchResult, CommandHistoryEntry, CommandResult, FrameworkDefinition, FrameworkCategory, SavedPrompt, PromptVariable, ImportPreview, ImportResult, BatchExportResult, ConflictAction, Workflow, WorkflowRun, WorkflowRunStep, ProjectInsight, CommitInfo, JiraProject, JiraExportResult, NotionPage, NotionExportResult, FileEntry, LLMProvider, ProviderInfo, GitFileStatus, GitBranchInfo, GitLogEntry, GitRemoteInfo, SkillCategory, Skill, AgentDef, AgentRun, AgentUsageStats, AgentTeam, AgentTeamNode, AgentTeamEdge, TeamRun, Schedule, TraceSpan, AgentAnalytics, SkillUsageAnalytics } from './types';
 
 interface FrameworkDefRow {
   id: string;
@@ -933,5 +933,293 @@ export const fileSystemAPI = {
 
   async getAppDirectory(): Promise<string> {
     return await invoke('get_app_directory');
+  },
+};
+
+export const skillCategoriesAPI = {
+  async list(): Promise<SkillCategory[]> {
+    return await invoke('list_skill_categories');
+  },
+  async get(id: string): Promise<SkillCategory | null> {
+    return await invoke('get_skill_category', { id });
+  },
+  async create(name: string, description: string, icon: string): Promise<SkillCategory> {
+    return await invoke('create_skill_category', { name, description, icon });
+  },
+  async update(id: string, name?: string, description?: string, icon?: string): Promise<SkillCategory> {
+    return await invoke('update_skill_category', { id, name, description, icon });
+  },
+  async delete(id: string): Promise<void> {
+    return await invoke('delete_skill_category', { id });
+  },
+};
+
+export const skillsAPI = {
+  async list(category?: string): Promise<Skill[]> {
+    return await invoke('list_skills', { category });
+  },
+  async get(id: string): Promise<Skill | null> {
+    return await invoke('get_skill', { id });
+  },
+  async create(name: string, description: string, category: string, systemPrompt: string, tools: string, outputSchema: string | null, modelTier: string): Promise<Skill> {
+    return await invoke('create_skill', { name, description, category, systemPrompt, tools, outputSchema, modelTier });
+  },
+  async update(id: string, updates: { name?: string; description?: string; category?: string; systemPrompt?: string; tools?: string; outputSchema?: string | null; modelTier?: string; isFavorite?: boolean }): Promise<Skill> {
+    return await invoke('update_skill', { id, ...updates });
+  },
+  async delete(id: string): Promise<void> {
+    return await invoke('delete_skill', { id });
+  },
+  async search(query: string): Promise<Skill[]> {
+    return await invoke('search_skills', { query });
+  },
+  async duplicate(id: string, newName: string): Promise<Skill> {
+    return await invoke('duplicate_skill', { id, newName });
+  },
+  async incrementUsage(id: string): Promise<void> {
+    return await invoke('increment_skill_usage', { id });
+  },
+};
+
+export const agentsAPI = {
+  async list(): Promise<AgentDef[]> {
+    return await invoke('list_agents');
+  },
+  async get(id: string): Promise<AgentDef | null> {
+    return await invoke('get_agent', { id });
+  },
+  async create(data: { name: string; description: string; icon: string; systemInstructions: string; skillIds: string; model: string; provider: string; maxTokens: number; temperature: number; toolsConfig: string; contextStrategy: string }): Promise<AgentDef> {
+    return await invoke('create_agent', data);
+  },
+  async update(id: string, updates: Record<string, unknown>): Promise<AgentDef> {
+    return await invoke('update_agent', { id, ...updates });
+  },
+  async delete(id: string): Promise<void> {
+    return await invoke('delete_agent', { id });
+  },
+  async search(query: string): Promise<AgentDef[]> {
+    return await invoke('search_agents', { query });
+  },
+  async duplicate(id: string, newName: string): Promise<AgentDef> {
+    return await invoke('duplicate_agent', { id, newName });
+  },
+  async incrementUsage(id: string): Promise<void> {
+    return await invoke('increment_agent_usage', { id });
+  },
+};
+
+export const agentRunsAPI = {
+  async create(agentId: string, projectId: string, skillId: string | null, inputPrompt: string, model: string, provider: string): Promise<AgentRun> {
+    return await invoke('create_agent_run', { agentId, projectId, skillId, inputPrompt, model, provider });
+  },
+  async get(id: string): Promise<AgentRun | null> {
+    return await invoke('get_agent_run', { id });
+  },
+  async list(agentId?: string, projectId?: string): Promise<AgentRun[]> {
+    return await invoke('list_agent_runs', { agentId, projectId });
+  },
+  async updateStatus(id: string, status: string, updates?: { outputContent?: string; inputTokens?: number; outputTokens?: number; totalTokens?: number; cost?: number; durationMs?: number; error?: string }): Promise<AgentRun> {
+    return await invoke('update_agent_run_status', { id, status, ...updates });
+  },
+  async delete(id: string): Promise<void> {
+    return await invoke('delete_agent_run', { id });
+  },
+  async getUsageStats(agentId: string): Promise<AgentUsageStats> {
+    return await invoke('get_agent_usage_stats', { agentId });
+  },
+};
+
+export const agentExecutionAPI = {
+  async runStream(config: { agentId: string; projectId: string; prompt: string; skillId?: string; model: string; provider: string; apiKey: string; maxTokens: number; temperature: number; systemPrompt: string; skillPrompts?: string[] }): Promise<Response> {
+    return fetch(`${SIDECAR_URL}/agent/run/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+  },
+  async cancel(runId: string): Promise<void> {
+    await fetch(`${SIDECAR_URL}/agent/run/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ run_id: runId }),
+    });
+  },
+  async test(config: { prompt: string; model: string; provider: string; apiKey: string; systemPrompt: string }): Promise<Response> {
+    return fetch(`${SIDECAR_URL}/agent/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+  },
+};
+
+// Phase 10: Agent Teams
+
+export const agentTeamsAPI = {
+  async list(): Promise<AgentTeam[]> {
+    return invoke('list_agent_teams');
+  },
+  async get(id: string): Promise<AgentTeam | null> {
+    return invoke('get_agent_team', { id });
+  },
+  async create(data: { name: string; description: string; icon: string; executionMode: string; conductorAgentId?: string | null; maxConcurrent: number }): Promise<AgentTeam> {
+    return invoke('create_agent_team', { name: data.name, description: data.description, icon: data.icon, executionMode: data.executionMode, conductorAgentId: data.conductorAgentId ?? null, maxConcurrent: data.maxConcurrent });
+  },
+  async update(id: string, data: Partial<{ name: string; description: string; icon: string; executionMode: string; conductorAgentId: string | null; maxConcurrent: number; isFavorite: boolean }>): Promise<AgentTeam> {
+    return invoke('update_agent_team', { id, ...data });
+  },
+  async delete(id: string): Promise<void> {
+    return invoke('delete_agent_team', { id });
+  },
+  async duplicate(id: string, newName: string): Promise<AgentTeam> {
+    return invoke('duplicate_agent_team', { id, newName });
+  },
+  async search(query: string): Promise<AgentTeam[]> {
+    return invoke('search_agent_teams', { query });
+  },
+  async incrementUsage(id: string): Promise<void> {
+    return invoke('increment_team_usage', { id });
+  },
+};
+
+export const teamNodesAPI = {
+  async list(teamId: string): Promise<AgentTeamNode[]> {
+    return invoke('list_team_nodes', { teamId });
+  },
+  async create(data: { teamId: string; agentId: string; nodeType: string; positionX: number; positionY: number; role: string; config: string; sortOrder: number }): Promise<AgentTeamNode> {
+    return invoke('create_team_node', data);
+  },
+  async update(id: string, data: Partial<{ positionX: number; positionY: number; role: string; config: string; sortOrder: number }>): Promise<AgentTeamNode> {
+    return invoke('update_team_node', { id, ...data });
+  },
+  async delete(id: string): Promise<void> {
+    return invoke('delete_team_node', { id });
+  },
+  async batchUpdate(updates: Array<{ id: string; position_x: number; position_y: number }>): Promise<void> {
+    return invoke('batch_update_team_nodes', { updates });
+  },
+};
+
+export const teamEdgesAPI = {
+  async list(teamId: string): Promise<AgentTeamEdge[]> {
+    return invoke('list_team_edges', { teamId });
+  },
+  async create(data: { teamId: string; sourceNodeId: string; targetNodeId: string; edgeType: string; condition?: string | null; dataMapping: string; label?: string | null }): Promise<AgentTeamEdge> {
+    return invoke('create_team_edge', { teamId: data.teamId, sourceNodeId: data.sourceNodeId, targetNodeId: data.targetNodeId, edgeType: data.edgeType, condition: data.condition ?? null, dataMapping: data.dataMapping, label: data.label ?? null });
+  },
+  async update(id: string, data: Partial<{ edgeType: string; condition: string | null; dataMapping: string; label: string | null }>): Promise<AgentTeamEdge> {
+    return invoke('update_team_edge', { id, ...data });
+  },
+  async delete(id: string): Promise<void> {
+    return invoke('delete_team_edge', { id });
+  },
+};
+
+export const teamRunsAPI = {
+  async create(teamId: string, projectId: string, input: string, executionMode: string): Promise<TeamRun> {
+    return invoke('create_team_run', { teamId, projectId, input, executionMode });
+  },
+  async get(id: string): Promise<TeamRun | null> {
+    return invoke('get_team_run', { id });
+  },
+  async list(teamId: string, projectId: string): Promise<TeamRun[]> {
+    return invoke('list_team_runs', { teamId, projectId });
+  },
+  async updateStatus(id: string, status: string, data?: Partial<{ output: string; totalTokens: number; totalCost: number; durationMs: number; error: string }>): Promise<void> {
+    return invoke('update_team_run_status', { id, status, ...data });
+  },
+  async delete(id: string): Promise<void> {
+    return invoke('delete_team_run', { id });
+  },
+};
+
+export const teamExecutionAPI = {
+  async runStream(config: {
+    teamId: string; projectId: string; input: string; executionMode: string;
+    nodes: Array<{ id: string; agentId: string; nodeType: string; role: string; config: string; sortOrder: number }>;
+    edges: Array<{ id: string; sourceNodeId: string; targetNodeId: string; edgeType: string; condition?: string | null; dataMapping: string }>;
+    apiKeys: Record<string, string>;
+  }): Promise<Response> {
+    return fetch(`${SIDECAR_URL}/team/run/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+  },
+  async cancel(teamRunId: string): Promise<void> {
+    await fetch(`${SIDECAR_URL}/team/run/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ team_run_id: teamRunId }),
+    });
+  },
+};
+
+// Phase 11: Schedules, Tracing, Analytics
+
+export const schedulesAPI = {
+  async list(): Promise<Schedule[]> {
+    return invoke('list_schedules');
+  },
+  async get(id: string): Promise<Schedule | null> {
+    return invoke('get_schedule', { id });
+  },
+  async create(data: { name: string; targetType: string; targetId: string; triggerType: string; triggerConfig: string; isActive?: boolean }): Promise<Schedule> {
+    return invoke('create_schedule', data);
+  },
+  async update(id: string, data: Partial<{ name: string; targetType: string; targetId: string; triggerType: string; triggerConfig: string; isActive: boolean; nextRunAt: number }>): Promise<Schedule> {
+    return invoke('update_schedule', { id, ...data });
+  },
+  async delete(id: string): Promise<void> {
+    return invoke('delete_schedule', { id });
+  },
+  async getActive(): Promise<Schedule[]> {
+    return invoke('get_active_schedules');
+  },
+  async updateRunStatus(id: string, lastRunAt: number, nextRunAt: number | null, runCount: number): Promise<void> {
+    return invoke('update_schedule_run_status', { id, lastRunAt, nextRunAt, runCount });
+  },
+};
+
+export const traceSpansAPI = {
+  async create(data: { id: string; parentSpanId?: string | null; runId: string; runType: string; spanName: string; spanKind: string; input: string; metadata: string; startedAt: number }): Promise<TraceSpan> {
+    return invoke('create_trace_span', { id: data.id, parentSpanId: data.parentSpanId ?? null, runId: data.runId, runType: data.runType, spanName: data.spanName, spanKind: data.spanKind, input: data.input, metadata: data.metadata, startedAt: data.startedAt });
+  },
+  async update(id: string, data: Partial<{ output: string; status: string; tokens: number; cost: number; endedAt: number }>): Promise<void> {
+    return invoke('update_trace_span', { id, ...data });
+  },
+  async listForRun(runId: string): Promise<TraceSpan[]> {
+    return invoke('list_trace_spans_for_run', { runId });
+  },
+  async get(id: string): Promise<TraceSpan | null> {
+    return invoke('get_trace_span', { id });
+  },
+  async deleteForRun(runId: string): Promise<void> {
+    return invoke('delete_trace_spans_for_run', { runId });
+  },
+};
+
+export const analyticsAPI = {
+  async getAgentAnalytics(startDate: string, endDate: string): Promise<AgentAnalytics[]> {
+    return invoke('get_agent_analytics', { startDate, endDate });
+  },
+  async getSkillUsageAnalytics(startDate: string, endDate: string): Promise<SkillUsageAnalytics[]> {
+    return invoke('get_skill_usage_analytics', { startDate, endDate });
+  },
+};
+
+export const schedulerExecutionAPI = {
+  async start(): Promise<void> {
+    await fetch(`${SIDECAR_URL}/scheduler/start`, { method: 'POST' });
+  },
+  async stop(): Promise<void> {
+    await fetch(`${SIDECAR_URL}/scheduler/stop`, { method: 'POST' });
+  },
+  async triggerNow(scheduleId: string): Promise<void> {
+    await fetch(`${SIDECAR_URL}/scheduler/trigger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scheduleId }),
+    });
   },
 };

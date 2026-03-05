@@ -19,6 +19,9 @@ from google_client import GoogleClient
 from ollama_client import OllamaClient
 from framework_loader import get_framework
 from document_parser import parse_document, fetch_url_content, fetch_google_docs_content
+from agent_engine import run_agent_stream, cancel_run, test_agent
+from team_engine import run_team_stream, cancel_team_run
+from scheduler import schedule_manager
 
 
 def get_client(provider: str, api_key: str, ollama_url: str = None):
@@ -719,6 +722,225 @@ async def parse_pdf(request: Request):
     except Exception as e:
         logger.error(f"Error parsing PDF: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class AgentRunRequest(BaseModel):
+    agentId: str
+    projectId: str
+    prompt: str
+    skillId: Optional[str] = None
+    model: str = "claude-sonnet-4-20250514"
+    provider: str = "anthropic"
+    apiKey: str = ""
+    maxTokens: int = 4096
+    temperature: float = 0.7
+    systemPrompt: str = ""
+    skillPrompts: Optional[List[str]] = None
+    fallbackModel: Optional[str] = None
+    memoryEnabled: bool = False
+
+
+class AgentCancelRequest(BaseModel):
+    run_id: str
+
+
+class AgentTestRequest(BaseModel):
+    prompt: str
+    model: str = "claude-sonnet-4-20250514"
+    provider: str = "anthropic"
+    apiKey: str = ""
+    systemPrompt: str = ""
+
+
+@app.post("/agent/run/stream")
+async def agent_run_stream(request: AgentRunRequest):
+    async def generate():
+        try:
+            client = get_client(request.provider, request.apiKey)
+
+            async for chunk in run_agent_stream(
+                client=client,
+                agent_id=request.agentId,
+                prompt=request.prompt,
+                model=request.model,
+                max_tokens=request.maxTokens,
+                temperature=request.temperature,
+                system_prompt=request.systemPrompt,
+                skill_prompts=request.skillPrompts,
+                fallback_model=request.fallbackModel,
+                memory_enabled=request.memoryEnabled,
+            ):
+                if chunk.get("type") == "message_stop" and "usage" in chunk:
+                    cost = client.calculate_cost(
+                        input_tokens=chunk["usage"]["input_tokens"],
+                        output_tokens=chunk["usage"]["output_tokens"],
+                        model=request.model,
+                    )
+                    chunk["cost"] = cost
+
+                yield f"data: {json.dumps(chunk)}\n\n"
+
+        except Exception as e:
+            logger.error(f"Error in agent stream: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/agent/run/cancel")
+async def agent_run_cancel(request: AgentCancelRequest):
+    success = cancel_run(request.run_id)
+    return {"success": success}
+
+
+@app.post("/agent/test")
+async def agent_test(request: AgentTestRequest):
+    try:
+        client = get_client(request.provider, request.apiKey)
+        response = await test_agent(
+            client=client,
+            prompt=request.prompt,
+            model=request.model,
+            system_prompt=request.systemPrompt,
+        )
+        return {
+            "content": response["content"],
+            "usage": response["usage"],
+            "model": response["model"],
+        }
+    except Exception as e:
+        logger.error(f"Error in agent test: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class TeamNodePayload(BaseModel):
+    id: str
+    agentId: str
+    nodeType: str = "agent"
+    role: str = "worker"
+    config: str = "{}"
+    sortOrder: int = 0
+
+
+class TeamEdgePayload(BaseModel):
+    id: str
+    sourceNodeId: str
+    targetNodeId: str
+    edgeType: str = "data"
+    condition: Optional[str] = None
+    dataMapping: str = "{}"
+
+
+class TeamRunRequest(BaseModel):
+    teamId: str
+    projectId: str
+    input: str
+    executionMode: str = "sequential"
+    nodes: List[TeamNodePayload]
+    edges: List[TeamEdgePayload]
+    apiKeys: Dict[str, str] = {}
+
+
+class TeamCancelRequest(BaseModel):
+    team_run_id: str
+
+
+@app.post("/team/run/stream")
+async def team_run_stream(request: TeamRunRequest):
+    async def generate():
+        try:
+            team_run_id = f"team-run-{os.urandom(8).hex()}"
+
+            nodes_dicts = [n.model_dump() for n in request.nodes]
+            edges_dicts = [e.model_dump() for e in request.edges]
+
+            agent_ids = list(set(n.agentId for n in request.nodes))
+            agents_map = {}
+            for aid in agent_ids:
+                for provider_key, api_key in request.apiKeys.items():
+                    if api_key:
+                        try:
+                            client = get_client(provider_key, api_key)
+                            break
+                        except Exception:
+                            continue
+                agents_map[aid] = {"name": aid, "provider": "anthropic", "model": "claude-sonnet-4-20250514", "system_instructions": ""}
+
+            async for event in run_team_stream(
+                get_client_fn=get_client,
+                team_run_id=team_run_id,
+                input_text=request.input,
+                execution_mode=request.executionMode,
+                nodes=nodes_dicts,
+                edges=edges_dicts,
+                agents_map=agents_map,
+                api_keys=request.apiKeys,
+            ):
+                if event.get("type") == "node_complete" and "usage" in event:
+                    usage = event["usage"]
+                    if usage:
+                        event["cost"] = 0.0
+                yield f"data: {json.dumps(event)}\n\n"
+
+        except Exception as e:
+            logger.error(f"Error in team stream: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/team/run/cancel")
+async def team_run_cancel(request: TeamCancelRequest):
+    success = cancel_team_run(request.team_run_id)
+    return {"success": success}
+
+
+class ScheduleSyncRequest(BaseModel):
+    schedules: List[Dict[str, Any]]
+
+
+class ScheduleTriggerRequest(BaseModel):
+    schedule_id: str
+
+
+@app.post("/scheduler/sync")
+async def scheduler_sync(request: ScheduleSyncRequest):
+    await schedule_manager.sync_schedules(request.schedules)
+    return {"success": True, "count": len(request.schedules)}
+
+
+@app.post("/scheduler/start")
+async def scheduler_start():
+    schedule_manager.start()
+    return {"success": True}
+
+
+@app.post("/scheduler/stop")
+async def scheduler_stop():
+    schedule_manager.stop()
+    return {"success": True}
+
+
+@app.post("/scheduler/trigger")
+async def scheduler_trigger(request: ScheduleTriggerRequest):
+    await schedule_manager.trigger_now(request.schedule_id)
+    return {"success": True}
 
 
 if __name__ == "__main__":
