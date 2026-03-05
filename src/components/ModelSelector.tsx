@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { LLMProvider, ProviderInfo } from '../lib/types';
-import { settingsAPI, modelsAPI } from '../lib/ipc';
+import { settingsAPI } from '../lib/ipc';
 
 interface ModelSelectorProps {
   selectedProvider: LLMProvider;
@@ -94,35 +94,31 @@ export { ProviderIcon, PROVIDER_LABELS, PROVIDER_COLORS, getModelLabel };
 export default function ModelSelector({ selectedProvider, selectedModel, onSelect, compact }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [liveModels, setLiveModels] = useState<Record<string, string[]>>({});
-  const [loadingModels, setLoadingModels] = useState<Record<string, boolean>>({});
+  const [enabledModels, setEnabledModels] = useState<Record<string, string[]>>({});
+  const [openUpward, setOpenUpward] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     settingsAPI.getAvailableProviders().then(setProviders).catch(() => {});
+    loadEnabledModels();
   }, []);
 
-  const fetchModelsForProvider = useCallback(async (provider: ProviderInfo) => {
-    if (liveModels[provider.id] || loadingModels[provider.id]) return;
-    setLoadingModels(prev => ({ ...prev, [provider.id]: true }));
+  const loadEnabledModels = async () => {
     try {
-      const key = await settingsAPI.getDecryptedKeyForProvider(provider.id as LLMProvider);
-      const settings = await settingsAPI.get();
-      const ollamaUrl = provider.id === 'ollama' ? (settings.ollama_base_url || undefined) : undefined;
-      const models = await modelsAPI.listByProvider(provider.id as LLMProvider, key || '', ollamaUrl);
-      if (models.length > 0) {
-        setLiveModels(prev => ({ ...prev, [provider.id]: models }));
+      const s = await settingsAPI.get();
+      if (s.enabled_models) {
+        const parsed = JSON.parse(s.enabled_models);
+        setEnabledModels(parsed);
       }
-    } catch { /* fall back to static models */ }
-    setLoadingModels(prev => ({ ...prev, [provider.id]: false }));
-  }, [liveModels, loadingModels]);
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     if (open) {
-      const configured = providers.filter(p => p.configured);
-      configured.forEach(p => fetchModelsForProvider(p));
+      loadEnabledModels();
     }
-  }, [open, providers, fetchModelsForProvider]);
+  }, [open]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -144,13 +140,22 @@ export default function ModelSelector({ selectedProvider, selectedModel, onSelec
   const configuredProviders = providers.filter(p => p.configured);
 
   const getModelsForProvider = (provider: ProviderInfo): string[] => {
-    return liveModels[provider.id] || provider.models;
+    const enabled = enabledModels[provider.id];
+    if (enabled && enabled.length > 0) return enabled;
+    return provider.models;
   };
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        onClick={() => setOpen(!open)}
+        ref={buttonRef}
+        onClick={() => {
+          if (!open && buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            setOpenUpward(rect.bottom + 400 > window.innerHeight);
+          }
+          setOpen(!open);
+        }}
         className={`flex items-center gap-1.5 rounded transition-colors ${
           compact
             ? 'px-2 py-1 text-[11px]'
@@ -172,14 +177,15 @@ export default function ModelSelector({ selectedProvider, selectedModel, onSelec
 
       {open && (
         <div
-          className="absolute z-50 mt-1 rounded-md shadow-lg overflow-hidden"
+          className="absolute z-50 rounded-md shadow-lg overflow-hidden"
           style={{
             backgroundColor: '#252526',
             border: '1px solid #3c3c3c',
             minWidth: '240px',
             maxHeight: '400px',
             overflowY: 'auto',
-            right: 0,
+            left: 0,
+            ...(openUpward ? { bottom: '100%', marginBottom: '4px' } : { top: '100%', marginTop: '4px' }),
           }}
         >
           {configuredProviders.length === 0 ? (
@@ -189,7 +195,6 @@ export default function ModelSelector({ selectedProvider, selectedModel, onSelec
           ) : (
             configuredProviders.map(provider => {
               const models = getModelsForProvider(provider);
-              const isLoading = loadingModels[provider.id];
               return (
                 <div key={provider.id}>
                   <div
@@ -198,9 +203,6 @@ export default function ModelSelector({ selectedProvider, selectedModel, onSelec
                   >
                     <ProviderIcon provider={provider.id as LLMProvider} size={12} />
                     {provider.name}
-                    {isLoading && (
-                      <span className="text-[9px] text-codex-text-muted animate-pulse ml-auto">loading...</span>
-                    )}
                   </div>
                   {models.map(model => (
                     <button

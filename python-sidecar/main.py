@@ -1,5 +1,5 @@
 """
-PMKit - Python Sidecar Server
+ProdForge - Python Sidecar Server
 FastAPI server for LLM integration and document processing
 """
 
@@ -34,7 +34,7 @@ def get_client(provider: str, api_key: str, ollama_url: str = None):
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="PMKit Sidecar", version="1.0.0")
+app = FastAPI(title="ProdForge Sidecar", version="1.0.0")
 
 # CORS middleware to allow Tauri frontend to connect
 app.add_middleware(
@@ -65,6 +65,8 @@ class ChatRequest(BaseModel):
     system: Optional[str] = None
     provider: str = "openai"
     ollama_url: Optional[str] = None
+    personal_info: Optional[str] = None
+    global_context: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -103,6 +105,17 @@ class GenerateFrameworkRequest(BaseModel):
     model: str = "gpt-5"
     provider: str = "openai"
     ollama_url: Optional[str] = None
+    personal_info: Optional[str] = None
+    global_context: Optional[str] = None
+
+
+def build_context_prefix(personal_info: Optional[str] = None, global_context: Optional[str] = None) -> str:
+    parts = []
+    if personal_info:
+        parts.append(f"## About the User\n{personal_info}")
+    if global_context:
+        parts.append(f"## Global Instructions\n{global_context}")
+    return "\n\n".join(parts)
 
 
 @app.get("/")
@@ -110,7 +123,7 @@ async def root():
     """Health check endpoint"""
     return {
         "status": "ok",
-        "service": "PMKit Sidecar",
+        "service": "ProdForge Sidecar",
         "version": "0.1.0"
     }
 
@@ -218,12 +231,18 @@ async def chat_stream(request: ChatRequest):
             # Send conversation ID first
             yield f"data: {json.dumps({'type': 'conversation_id', 'conversation_id': conversation_id})}\n\n"
 
+            # Build system message with context
+            system = request.system or ""
+            context_prefix = build_context_prefix(request.personal_info, request.global_context)
+            if context_prefix:
+                system = f"{context_prefix}\n\n{system}" if system else context_prefix
+
             # Stream from OpenAI API
             async for chunk in client.chat_stream(
                 messages=messages,
                 model=request.model,
                 max_tokens=request.max_tokens,
-                system=request.system
+                system=system or None
             ):
                 # Add cost calculation to message_stop events
                 if chunk.get("type") == "message_stop" and "usage" in chunk:
@@ -464,6 +483,10 @@ async def generate_framework_stream(request: GenerateFrameworkRequest):
             if framework.get("example_output"):
                 system_prompt += f"\n\n## Example Output Format:\n\n{framework['example_output']}"
 
+            context_prefix = build_context_prefix(request.personal_info, request.global_context)
+            if context_prefix:
+                system_prompt = f"{context_prefix}\n\n{system_prompt}" if system_prompt else context_prefix
+
             # Build user prompt
             user_prompt_parts = [
                 "# Context Documents",
@@ -700,7 +723,7 @@ async def parse_pdf(request: Request):
 
 if __name__ == "__main__":
     # Run the server
-    port = int(os.getenv("PORT", "8000"))
+    port = int(os.getenv("PORT", "8001"))
     uvicorn.run(
         "main:app",
         host="127.0.0.1",

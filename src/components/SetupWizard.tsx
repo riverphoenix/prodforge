@@ -3,9 +3,10 @@ import { settingsAPI, projectsAPI } from '../lib/ipc';
 
 interface SetupWizardProps {
   onComplete: () => void;
+  onSkip: () => void;
 }
 
-export default function SetupWizard({ onComplete }: SetupWizardProps) {
+export default function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [step, setStep] = useState(0);
   const [apiKey, setApiKey] = useState('');
   const [name, setName] = useState('');
@@ -38,7 +39,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-codex-bg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: '#1e1e1e' }}>
       <div className="max-w-lg w-full mx-4">
         {/* Progress dots */}
         <div className="flex items-center justify-center gap-2 mb-8">
@@ -55,9 +56,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         <div className="bg-codex-surface rounded-xl border border-codex-border p-8 shadow-2xl">
           {step === 0 && (
             <div className="text-center">
-              <div className="text-4xl mb-4">PMKit</div>
+              <div className="text-4xl mb-4">ProdForge</div>
               <h1 className="text-2xl font-semibold text-codex-text-primary mb-3">
-                Welcome to PMKit
+                Welcome to ProdForge
               </h1>
               <p className="text-sm text-codex-text-secondary mb-6 leading-relaxed">
                 Your AI-powered product management toolkit. Generate frameworks, manage documents,
@@ -167,10 +168,10 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={onComplete}
+                onClick={onSkip}
                 className="px-4 py-2 text-xs text-codex-text-muted hover:text-codex-text-secondary transition-colors"
               >
-                Skip
+                Skip for now
               </button>
               {step < totalSteps - 1 ? (
                 <button

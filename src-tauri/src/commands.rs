@@ -79,6 +79,7 @@ pub struct Settings {
     pub ollama_base_url: Option<String>,
     pub default_provider: Option<String>,
     pub enabled_models: Option<String>,
+    pub global_context: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -106,12 +107,13 @@ pub struct SettingsUpdate {
     pub ollama_base_url: Option<String>,
     pub default_provider: Option<String>,
     pub enabled_models: Option<String>,
+    pub global_context: Option<String>,
 }
 
 // Encryption helpers
 fn get_encryption_key(_app: &tauri::AppHandle) -> Result<[u8; 32], String> {
     // Derive a key from the app's unique identifier and machine ID
-    let app_id = "com.dsotiriou.pmkit";
+    let app_id = "com.dsotiriou.prodforge";
     let machine_id = machine_uid::get().unwrap_or_else(|_| "default-machine-id".to_string());
 
     let mut hasher = Sha256::new();
@@ -160,7 +162,7 @@ fn get_db_connection(app: &tauri::AppHandle) -> Result<Connection, String> {
     std::fs::create_dir_all(&app_dir)
         .map_err(|e| format!("Failed to create app directory: {}", e))?;
 
-    let db_path = app_dir.join("pm-ide.db");
+    let db_path = app_dir.join("prodforge.db");
     let conn = Connection::open(db_path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
 
@@ -185,6 +187,9 @@ pub fn init_db(app: &tauri::AppHandle) -> Result<(), String> {
         )",
         [],
     ).map_err(|e| format!("Failed to create projects table: {}", e))?;
+
+    let _ = conn.execute("ALTER TABLE projects ADD COLUMN workspace_state TEXT", []);
+    let _ = conn.execute("ALTER TABLE projects ADD COLUMN repo_path TEXT", []);
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS documents (
@@ -295,6 +300,7 @@ pub fn init_db(app: &tauri::AppHandle) -> Result<(), String> {
     let _ = conn.execute("ALTER TABLE settings ADD COLUMN ollama_base_url TEXT", []);
     let _ = conn.execute("ALTER TABLE settings ADD COLUMN default_provider TEXT DEFAULT 'openai'", []);
     let _ = conn.execute("ALTER TABLE settings ADD COLUMN enabled_models TEXT", []);
+    let _ = conn.execute("ALTER TABLE settings ADD COLUMN global_context TEXT", []);
 
     // Create token usage tracking table
     conn.execute(
@@ -1670,7 +1676,7 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<Settings, String> {
                 profile_pic, about_me, about_role, jira_url, jira_email, jira_api_token_encrypted,
                 jira_project_key, notion_api_token_encrypted, notion_parent_page_id,
                 anthropic_api_key_encrypted, google_api_key_encrypted, ollama_base_url, default_provider,
-                enabled_models, created_at, updated_at
+                enabled_models, global_context, created_at, updated_at
          FROM settings WHERE id = ?1"
     ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
@@ -1698,8 +1704,9 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<Settings, String> {
             ollama_base_url: row.get(19)?,
             default_provider: row.get(20)?,
             enabled_models: row.get(21)?,
-            created_at: row.get(22)?,
-            updated_at: row.get(23)?,
+            global_context: row.get(22)?,
+            created_at: row.get(23)?,
+            updated_at: row.get(24)?,
         })
     }).map_err(|e| format!("Failed to get settings: {}", e))?;
 
@@ -1769,8 +1776,9 @@ pub async fn update_settings(
              ollama_base_url = COALESCE(?19, ollama_base_url),
              default_provider = COALESCE(?20, default_provider),
              enabled_models = COALESCE(?21, enabled_models),
-             updated_at = ?22
-         WHERE id = ?23",
+             global_context = COALESCE(?22, global_context),
+             updated_at = ?23
+         WHERE id = ?24",
         params![
             &api_key_encrypted,
             &settings.username,
@@ -1793,6 +1801,7 @@ pub async fn update_settings(
             &settings.ollama_base_url,
             &settings.default_provider,
             &settings.enabled_models,
+            &settings.global_context,
             &now,
             "default"
         ],
@@ -4390,7 +4399,7 @@ fn ensure_repo(app: &tauri::AppHandle, project_id: &str) -> Result<Repository, S
         let repo = Repository::init(&repo_path)
             .map_err(|e| format!("Failed to init repo: {}", e))?;
         {
-            let sig = Signature::now("PM IDE", "pm-ide@local").map_err(|e| format!("Sig error: {}", e))?;
+            let sig = Signature::now("ProdForge", "prodforge@local").map_err(|e| format!("Sig error: {}", e))?;
             let tree_id = {
                 let mut index = repo.index().map_err(|e| format!("Index error: {}", e))?;
                 index.write_tree().map_err(|e| format!("Tree error: {}", e))?
@@ -4443,7 +4452,7 @@ pub async fn commit_output(
     let tree_id = index.write_tree().map_err(|e| format!("Tree error: {}", e))?;
     let tree = repo.find_tree(tree_id).map_err(|e| format!("Tree find error: {}", e))?;
 
-    let sig = Signature::now("PM IDE", "pm-ide@local").map_err(|e| format!("Sig error: {}", e))?;
+    let sig = Signature::now("ProdForge", "prodforge@local").map_err(|e| format!("Sig error: {}", e))?;
     let head = repo.head().map_err(|e| format!("HEAD error: {}", e))?;
     let parent = head.peel_to_commit().map_err(|e| format!("Parent error: {}", e))?;
 
@@ -5074,4 +5083,470 @@ pub async fn get_app_directory() -> Result<String, String> {
     std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
         .map_err(|e| format!("Failed to get current directory: {}", e))
+}
+
+// === PTY Terminal Commands ===
+
+#[tauri::command]
+pub async fn create_pty_session(
+    cols: u16,
+    rows: u16,
+    cwd: Option<String>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let working_dir = cwd.unwrap_or_else(|| {
+        std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
+    });
+
+    let pty_manager = app.state::<crate::pty::PtyManager>();
+    pty_manager.create_session(&session_id, cols, rows, &working_dir, app.clone())?;
+
+    Ok(session_id)
+}
+
+#[tauri::command]
+pub async fn write_pty(
+    session_id: String,
+    data: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let pty_manager = app.state::<crate::pty::PtyManager>();
+    pty_manager.write_to_session(&session_id, &data)
+}
+
+#[tauri::command]
+pub async fn resize_pty(
+    session_id: String,
+    cols: u16,
+    rows: u16,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let pty_manager = app.state::<crate::pty::PtyManager>();
+    pty_manager.resize_session(&session_id, cols, rows)
+}
+
+#[tauri::command]
+pub async fn close_pty(
+    session_id: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let pty_manager = app.state::<crate::pty::PtyManager>();
+    pty_manager.close_session(&session_id)
+}
+
+// --- Workspace State Commands ---
+
+#[tauri::command]
+pub async fn save_workspace_state(
+    project_id: String,
+    state_json: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute(
+        "UPDATE projects SET workspace_state = ?1 WHERE id = ?2",
+        params![&state_json, &project_id],
+    ).map_err(|e| format!("Failed to save workspace state: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_workspace_state(
+    project_id: String,
+    app: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    let conn = get_db_connection(&app)?;
+    let result: Option<String> = conn.query_row(
+        "SELECT workspace_state FROM projects WHERE id = ?1",
+        params![&project_id],
+        |row| row.get(0),
+    ).optional().map_err(|e| format!("Failed to get workspace state: {}", e))?
+    .flatten();
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn save_project_repo_path(
+    project_id: String,
+    repo_path: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let conn = get_db_connection(&app)?;
+    conn.execute(
+        "UPDATE projects SET repo_path = ?1 WHERE id = ?2",
+        params![&repo_path, &project_id],
+    ).map_err(|e| format!("Failed to save repo path: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_project_repo_path_cmd(
+    project_id: String,
+    app: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    let conn = get_db_connection(&app)?;
+    let result: Option<String> = conn.query_row(
+        "SELECT repo_path FROM projects WHERE id = ?1",
+        params![&project_id],
+        |row| row.get(0),
+    ).optional().map_err(|e| format!("Failed to get repo path: {}", e))?
+    .flatten();
+    Ok(result)
+}
+
+// --- Git Repository Commands ---
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitFileStatus {
+    pub path: String,
+    pub status: String,
+    pub staged: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitBranchInfo {
+    pub name: String,
+    pub is_current: bool,
+    pub is_remote: bool,
+    pub upstream: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitLogEntry {
+    pub oid: String,
+    pub message: String,
+    pub author: String,
+    pub email: String,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitRemoteInfo {
+    pub name: String,
+    pub url: String,
+}
+
+#[tauri::command]
+pub fn git_status(repo_path: String) -> Result<Vec<GitFileStatus>, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let statuses = repo.statuses(None)
+        .map_err(|e| format!("Failed to get status: {}", e))?;
+
+    let mut files = Vec::new();
+    for entry in statuses.iter() {
+        let path = entry.path().unwrap_or("").to_string();
+        let s = entry.status();
+
+        if s.is_index_new() {
+            files.push(GitFileStatus { path: path.clone(), status: "added".into(), staged: true });
+        }
+        if s.is_index_modified() {
+            files.push(GitFileStatus { path: path.clone(), status: "modified".into(), staged: true });
+        }
+        if s.is_index_deleted() {
+            files.push(GitFileStatus { path: path.clone(), status: "deleted".into(), staged: true });
+        }
+        if s.is_index_renamed() {
+            files.push(GitFileStatus { path: path.clone(), status: "renamed".into(), staged: true });
+        }
+        if s.is_wt_new() {
+            files.push(GitFileStatus { path: path.clone(), status: "untracked".into(), staged: false });
+        }
+        if s.is_wt_modified() {
+            files.push(GitFileStatus { path: path.clone(), status: "modified".into(), staged: false });
+        }
+        if s.is_wt_deleted() {
+            files.push(GitFileStatus { path: path.clone(), status: "deleted".into(), staged: false });
+        }
+        if s.is_wt_renamed() {
+            files.push(GitFileStatus { path: path.clone(), status: "renamed".into(), staged: false });
+        }
+        if s.is_conflicted() {
+            files.push(GitFileStatus { path, status: "conflicted".into(), staged: false });
+        }
+    }
+
+    Ok(files)
+}
+
+#[tauri::command]
+pub fn git_log(repo_path: String, limit: Option<usize>) -> Result<Vec<GitLogEntry>, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let mut revwalk = repo.revwalk()
+        .map_err(|e| format!("Revwalk error: {}", e))?;
+    revwalk.push_head().map_err(|e| format!("Push head error: {}", e))?;
+    revwalk.set_sorting(git2::Sort::TIME)
+        .map_err(|e| format!("Sort error: {}", e))?;
+
+    let max = limit.unwrap_or(100);
+    let mut entries = Vec::new();
+    for (i, oid) in revwalk.enumerate() {
+        if i >= max { break; }
+        let oid = oid.map_err(|e| format!("OID error: {}", e))?;
+        let commit = repo.find_commit(oid)
+            .map_err(|e| format!("Commit error: {}", e))?;
+        entries.push(GitLogEntry {
+            oid: oid.to_string(),
+            message: commit.message().unwrap_or("").to_string(),
+            author: commit.author().name().unwrap_or("").to_string(),
+            email: commit.author().email().unwrap_or("").to_string(),
+            timestamp: commit.time().seconds(),
+        });
+    }
+
+    Ok(entries)
+}
+
+#[tauri::command]
+pub fn git_branches(repo_path: String) -> Result<Vec<GitBranchInfo>, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let head = repo.head().ok();
+    let current_branch = head.as_ref()
+        .and_then(|h| h.shorthand().map(|s| s.to_string()));
+
+    let mut branches = Vec::new();
+    for branch_result in repo.branches(None).map_err(|e| format!("Branches error: {}", e))? {
+        let (branch, branch_type) = branch_result.map_err(|e| format!("Branch error: {}", e))?;
+        let name = branch.name().map_err(|e| format!("Name error: {}", e))?
+            .unwrap_or("").to_string();
+        let is_remote = branch_type == git2::BranchType::Remote;
+        let upstream = branch.upstream().ok()
+            .and_then(|u| u.name().ok().flatten().map(|s| s.to_string()));
+        branches.push(GitBranchInfo {
+            is_current: !is_remote && current_branch.as_deref() == Some(&name),
+            name,
+            is_remote,
+            upstream,
+        });
+    }
+
+    Ok(branches)
+}
+
+#[tauri::command]
+pub fn git_checkout_branch(repo_path: String, branch_name: String) -> Result<(), String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let (object, reference) = repo.revparse_ext(&branch_name)
+        .map_err(|e| format!("Branch not found: {}", e))?;
+    repo.checkout_tree(&object, None)
+        .map_err(|e| format!("Checkout error: {}", e))?;
+    if let Some(refname) = reference.and_then(|r| r.name().map(|s| s.to_string())) {
+        repo.set_head(&refname)
+            .map_err(|e| format!("Set HEAD error: {}", e))?;
+    } else {
+        repo.set_head_detached(object.id())
+            .map_err(|e| format!("Detach HEAD error: {}", e))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn git_create_branch(repo_path: String, branch_name: String) -> Result<(), String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let head = repo.head().map_err(|e| format!("HEAD error: {}", e))?;
+    let commit = head.peel_to_commit()
+        .map_err(|e| format!("Peel error: {}", e))?;
+    repo.branch(&branch_name, &commit, false)
+        .map_err(|e| format!("Create branch error: {}", e))?;
+    let refname = format!("refs/heads/{}", branch_name);
+    let obj = repo.revparse_single(&refname)
+        .map_err(|e| format!("Revparse error: {}", e))?;
+    repo.checkout_tree(&obj, None)
+        .map_err(|e| format!("Checkout error: {}", e))?;
+    repo.set_head(&refname)
+        .map_err(|e| format!("Set HEAD error: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn git_stage_files(repo_path: String, files: Vec<String>) -> Result<(), String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let mut index = repo.index().map_err(|e| format!("Index error: {}", e))?;
+    for file in &files {
+        let path = std::path::Path::new(file);
+        if std::path::Path::new(&repo_path).join(path).exists() {
+            index.add_path(path).map_err(|e| format!("Stage error for {}: {}", file, e))?;
+        } else {
+            index.remove_path(path).map_err(|e| format!("Remove error for {}: {}", file, e))?;
+        }
+    }
+    index.write().map_err(|e| format!("Write index error: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn git_unstage_files(repo_path: String, files: Vec<String>) -> Result<(), String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let head = repo.head().map_err(|e| format!("HEAD error: {}", e))?;
+    let commit = head.peel_to_commit()
+        .map_err(|e| format!("Peel error: {}", e))?;
+    let tree = commit.tree().map_err(|e| format!("Tree error: {}", e))?;
+
+    let mut index = repo.index().map_err(|e| format!("Index error: {}", e))?;
+    for file in &files {
+        let path = std::path::Path::new(file);
+        if let Ok(entry) = tree.get_path(path) {
+            let blob = repo.find_blob(entry.id())
+                .map_err(|e| format!("Blob error: {}", e))?;
+            let ie = git2::IndexEntry {
+                ctime: git2::IndexTime::new(0, 0),
+                mtime: git2::IndexTime::new(0, 0),
+                dev: 0,
+                ino: 0,
+                mode: entry.filemode() as u32,
+                uid: 0,
+                gid: 0,
+                file_size: blob.size() as u32,
+                id: entry.id(),
+                flags: 0,
+                flags_extended: 0,
+                path: file.as_bytes().to_vec(),
+            };
+            index.add(&ie).map_err(|e| format!("Reset error: {}", e))?;
+        } else {
+            index.remove_path(path).map_err(|e| format!("Remove error: {}", e))?;
+        }
+    }
+    index.write().map_err(|e| format!("Write index error: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn git_commit_changes(
+    repo_path: String,
+    message: String,
+    author_name: Option<String>,
+    author_email: Option<String>,
+) -> Result<String, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let mut index = repo.index().map_err(|e| format!("Index error: {}", e))?;
+    let tree_id = index.write_tree().map_err(|e| format!("Tree error: {}", e))?;
+    let tree = repo.find_tree(tree_id).map_err(|e| format!("Find tree error: {}", e))?;
+
+    let name = author_name.unwrap_or_else(|| "ProdForge User".to_string());
+    let email = author_email.unwrap_or_else(|| "prodforge@local".to_string());
+    let sig = Signature::now(&name, &email)
+        .map_err(|e| format!("Signature error: {}", e))?;
+
+    let head = repo.head().map_err(|e| format!("HEAD error: {}", e))?;
+    let parent = head.peel_to_commit().map_err(|e| format!("Peel error: {}", e))?;
+
+    let oid = repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&parent])
+        .map_err(|e| format!("Commit error: {}", e))?;
+
+    Ok(oid.to_string())
+}
+
+#[tauri::command]
+pub fn git_diff_working(repo_path: String) -> Result<String, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let diff = repo.diff_index_to_workdir(None, None)
+        .map_err(|e| format!("Diff error: {}", e))?;
+
+    let mut diff_text = String::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let prefix = match line.origin() {
+            '+' => "+",
+            '-' => "-",
+            ' ' => " ",
+            _ => "",
+        };
+        diff_text.push_str(prefix);
+        diff_text.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
+        true
+    }).map_err(|e| format!("Diff print error: {}", e))?;
+
+    Ok(diff_text)
+}
+
+#[tauri::command]
+pub fn git_diff_staged(repo_path: String) -> Result<String, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let head = repo.head().map_err(|e| format!("HEAD error: {}", e))?;
+    let tree = head.peel_to_tree().map_err(|e| format!("Tree error: {}", e))?;
+
+    let diff = repo.diff_tree_to_index(Some(&tree), None, None)
+        .map_err(|e| format!("Diff error: {}", e))?;
+
+    let mut diff_text = String::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        let prefix = match line.origin() {
+            '+' => "+",
+            '-' => "-",
+            ' ' => " ",
+            _ => "",
+        };
+        diff_text.push_str(prefix);
+        diff_text.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
+        true
+    }).map_err(|e| format!("Diff print error: {}", e))?;
+
+    Ok(diff_text)
+}
+
+#[tauri::command]
+pub fn git_remote_info(repo_path: String) -> Result<Vec<GitRemoteInfo>, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let remotes = repo.remotes()
+        .map_err(|e| format!("Remotes error: {}", e))?;
+
+    let mut infos = Vec::new();
+    for name in remotes.iter().flatten() {
+        if let Ok(remote) = repo.find_remote(name) {
+            infos.push(GitRemoteInfo {
+                name: name.to_string(),
+                url: remote.url().unwrap_or("").to_string(),
+            });
+        }
+    }
+    Ok(infos)
+}
+
+#[tauri::command]
+pub fn git_init_repo(repo_path: String) -> Result<(), String> {
+    Repository::init(&repo_path)
+        .map_err(|e| format!("Init error: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn git_clone_repo(url: String, target_path: String) -> Result<(), String> {
+    Repository::clone(&url, &target_path)
+        .map_err(|e| format!("Clone error: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn git_current_branch(repo_path: String) -> Result<String, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let head = repo.head().map_err(|e| format!("HEAD error: {}", e))?;
+    Ok(head.shorthand().unwrap_or("HEAD").to_string())
+}
+
+#[tauri::command]
+pub fn git_stage_all(repo_path: String) -> Result<(), String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let mut index = repo.index().map_err(|e| format!("Index error: {}", e))?;
+    index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+        .map_err(|e| format!("Add all error: {}", e))?;
+    index.write().map_err(|e| format!("Write index error: {}", e))?;
+    Ok(())
 }

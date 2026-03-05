@@ -9,7 +9,7 @@ interface SectionRegeneratorProps {
   onContentUpdate: (newContent: string) => void;
 }
 
-const SIDECAR_URL = 'http://localhost:8000';
+const SIDECAR_URL = 'http://127.0.0.1:8001';
 
 export default function SectionRegenerator({ content, onContentUpdate }: SectionRegeneratorProps) {
   const [hoveredSection, setHoveredSection] = useState<string | null>(null);

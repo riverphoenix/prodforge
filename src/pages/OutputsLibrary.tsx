@@ -144,7 +144,7 @@ export default function OutputsLibrary({ projectId }: OutputsLibraryProps) {
       const abortController = new AbortController();
       refineAbortRef.current = abortController;
 
-      const response = await fetch('http://localhost:8000/chat/stream', {
+      const response = await fetch('http://127.0.0.1:8001/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -4,18 +4,24 @@ import ThreadsPanel from './components/ThreadsPanel';
 import ProjectView from './pages/ProjectView';
 import Settings from './pages/Settings';
 import ResizableDivider from './components/ResizableDivider';
-import { projectsAPI, frameworkDefsAPI, savedPromptsAPI, frameworkOutputsAPI, foldersAPI, settingsAPI } from './lib/ipc';
+import { projectsAPI, conversationsAPI, frameworkDefsAPI, savedPromptsAPI, frameworkOutputsAPI, foldersAPI, settingsAPI } from './lib/ipc';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import CommandPalette from './components/CommandPalette';
 import BottomPanel from './components/BottomPanel';
 import { ToastProvider } from './components/Toast';
 import ShortcutOverlay from './components/ShortcutOverlay';
 import SetupWizard from './components/SetupWizard';
+import { LayoutMode, createDefaultLayout } from './lib/layoutEngine';
+import { saveWorkspaceState, loadWorkspaceState } from './lib/workspaceState';
+import { THEMES, applyTheme, getThemeById } from './lib/themes';
+import FocusMode from './components/FocusMode';
+import QuickSwitcher from './components/QuickSwitcher';
 import { Command } from './lib/commandRegistry';
-import { FrameworkDefinition, SavedPrompt, FrameworkOutput, SearchResult } from './lib/types';
+import { Project, Conversation, FrameworkDefinition, SavedPrompt, FrameworkOutput, SearchResult, LLMProvider } from './lib/types';
+import ModelSelector from './components/ModelSelector';
 
 type View = 'welcome' | 'project' | 'settings';
-type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'workflows' | 'editor';
+type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor';
 
 const MIN_BOTTOM_PANEL_HEIGHT = 100;
 const MAX_BOTTOM_PANEL_RATIO = 0.5;
@@ -24,20 +30,32 @@ const DEFAULT_BOTTOM_PANEL_HEIGHT = 200;
 const TAB_ICONS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'chat', label: 'Chat', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg> },
   { id: 'editor', label: 'Editor', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg> },
-  { id: 'documents', label: 'Documents', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg> },
   { id: 'frameworks', label: 'Frameworks', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg> },
   { id: 'prompts', label: 'Prompts', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg> },
   { id: 'context', label: 'Context', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg> },
   { id: 'outputs', label: 'Outputs', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" /></svg> },
-  { id: 'workflows', label: 'Workflows', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg> },
 ];
+
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const ts = timestamp < 1e12 ? timestamp * 1000 : timestamp;
+  const diff = now - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('welcome');
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('chat');
   const [threadsOpen, setThreadsOpen] = useState(false);
-  const [showInsights, setShowInsights] = useState(false);
   const [bottomPanelVisible, setBottomPanelVisible] = useState(false);
   const [bottomPanelHeight, setBottomPanelHeight] = useState<number>(() => {
     const saved = localStorage.getItem('bottomPanelHeight');
@@ -46,7 +64,8 @@ function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
-  const [currentModel, setCurrentModel] = useState<string>('gpt-5');
+  const [homeProvider, setHomeProvider] = useState<LLMProvider>('openai');
+  const [homeModel, setHomeModel] = useState('gpt-5');
   const [welcomeInput, setWelcomeInput] = useState('');
   const [welcomeLoading, setWelcomeLoading] = useState(false);
   const [pendingChatMessage, setPendingChatMessage] = useState<string | null>(null);
@@ -62,10 +81,42 @@ function App() {
   const [searchLoading, setSearchLoading] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchPanelRef = useRef<HTMLDivElement>(null);
+  const [recentProjects, setRecentProjects] = useState<(Project & { conversations: Conversation[] })[]>([]);
+  const [bottomPanelTab, setBottomPanelTab] = useState<string | undefined>(undefined);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('single');
+  const [, setLayoutSizes] = useState<number[]>([100]);
+  const [focusMode, setFocusMode] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState(() => localStorage.getItem('prodforge_theme') || 'midnight');
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+
+  const loadRecentProjects = async () => {
+    try {
+      const projects = await projectsAPI.list();
+      if (projects && projects.length > 0) {
+        const sorted = [...projects].sort((a, b) => b.updated_at - a.updated_at).slice(0, 1);
+        const withConvos = await Promise.all(
+          sorted.map(async (p) => {
+            const convos = await conversationsAPI.list(p.id).catch(() => []);
+            return { ...p, conversations: convos.sort((a: Conversation, b: Conversation) => b.updated_at - a.updated_at).slice(0, 3) };
+          })
+        );
+        setRecentProjects(withConvos);
+      }
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
+    applyTheme(getThemeById(currentTheme));
+  }, [currentTheme]);
+
+  useEffect(() => {
+    loadRecentProjects();
+  }, [currentView]);
 
   useEffect(() => {
     (async () => {
       try {
+        if (localStorage.getItem('prodforge_setup_complete')) return;
         const s = await settingsAPI.get();
         if (!s.api_key_encrypted && !s.anthropic_api_key_encrypted && !s.google_api_key_encrypted) {
           const projects = await projectsAPI.list();
@@ -77,9 +128,33 @@ function App() {
     })();
   }, []);
 
-  const handleProjectSelect = (projectId: string, tab: Tab = 'chat') => {
+  useEffect(() => {
+    if (!currentProjectId) return;
+    saveWorkspaceState(currentProjectId, {
+      layoutMode,
+      layoutSizes: [100],
+      activeTab,
+      bottomPanelVisible,
+      bottomPanelHeight,
+      bottomPanelTab,
+      threadsOpen,
+      showInsights: false,
+    });
+  }, [currentProjectId, layoutMode, activeTab, bottomPanelVisible, bottomPanelHeight, bottomPanelTab, threadsOpen]);
+
+  const handleProjectSelect = async (projectId: string, tab: Tab = 'chat') => {
     setCurrentProjectId(projectId);
-    setActiveTab(tab);
+    const ws = await loadWorkspaceState(projectId);
+    if (ws) {
+      setLayoutMode(ws.layoutMode || 'single');
+      setActiveTab((ws.activeTab as Tab) || tab);
+      setBottomPanelVisible(ws.bottomPanelVisible ?? false);
+      setBottomPanelHeight(ws.bottomPanelHeight || 250);
+      setBottomPanelTab(ws.bottomPanelTab);
+      setThreadsOpen(ws.threadsOpen ?? false);
+    } else {
+      setActiveTab(tab);
+    }
     setCurrentView('project');
   };
 
@@ -160,6 +235,12 @@ function App() {
     }
   }, [searchOpen]);
 
+  const handleLayoutChange = (mode: LayoutMode) => {
+    const layout = createDefaultLayout(mode, 'chat');
+    setLayoutMode(mode);
+    setLayoutSizes(layout.sizes);
+  };
+
   const handleBottomPanelResize = (delta: number) => {
     setBottomPanelHeight((prev) => {
       const maxHeight = window.innerHeight * MAX_BOTTOM_PANEL_RATIO;
@@ -175,14 +256,19 @@ function App() {
     'cmd-palette': () => setCommandPaletteOpen(v => !v),
     'tab-chat': () => { if (currentProjectId) { setActiveTab('chat'); setCurrentView('project'); } },
     'tab-editor': () => { if (currentProjectId) { setActiveTab('editor'); setCurrentView('project'); } },
-    'tab-documents': () => { if (currentProjectId) { setActiveTab('documents'); setCurrentView('project'); } },
     'tab-frameworks': () => { if (currentProjectId) { setActiveTab('frameworks'); setCurrentView('project'); } },
     'tab-prompts': () => { if (currentProjectId) { setActiveTab('prompts'); setCurrentView('project'); } },
     'tab-context': () => { if (currentProjectId) { setActiveTab('context'); setCurrentView('project'); } },
     'tab-outputs': () => { if (currentProjectId) { setActiveTab('outputs'); setCurrentView('project'); } },
-    'tab-workflows': () => { if (currentProjectId) { setActiveTab('workflows'); setCurrentView('project'); } },
     'toggle-terminal': () => setBottomPanelVisible(v => !v),
     'toggle-sidebar': () => setThreadsOpen(v => !v),
+    'layout-single': () => handleLayoutChange('single'),
+    'layout-split-h': () => handleLayoutChange('split-h'),
+    'layout-split-v': () => handleLayoutChange('split-v'),
+    'layout-triple': () => handleLayoutChange('triple'),
+    'layout-quad': () => handleLayoutChange('quad'),
+    'toggle-focus': () => setFocusMode(v => !v),
+    'quick-switcher': () => setQuickSwitcherOpen(v => !v),
     'search': () => { setSearchOpen(v => !v); setTimeout(() => searchInputRef.current?.focus(), 100); },
     'shortcuts-overlay': () => setShortcutsOpen(v => !v),
   }), [currentProjectId]);
@@ -192,14 +278,20 @@ function App() {
   const paletteCommands: Command[] = useMemo(() => [
     { id: 'nav-chat', label: 'Chat', category: 'Navigation', shortcut: '\u23181', keywords: ['conversation', 'ai'], action: () => { if (currentProjectId) { setActiveTab('chat'); setCurrentView('project'); } } },
     { id: 'nav-editor', label: 'Editor', category: 'Navigation', shortcut: '\u23182', keywords: ['files', 'code', 'edit'], action: () => { if (currentProjectId) { setActiveTab('editor'); setCurrentView('project'); } } },
-    { id: 'nav-documents', label: 'Documents', category: 'Navigation', shortcut: '\u23183', keywords: ['docs', 'folders'], action: () => { if (currentProjectId) { setActiveTab('documents'); setCurrentView('project'); } } },
     { id: 'nav-frameworks', label: 'Frameworks', category: 'Navigation', shortcut: '\u23184', keywords: ['rice', 'prd', 'jtbd'], action: () => { if (currentProjectId) { setActiveTab('frameworks'); setCurrentView('project'); } } },
     { id: 'nav-prompts', label: 'Prompts', category: 'Navigation', shortcut: '\u23185', keywords: ['templates', 'saved'], action: () => { if (currentProjectId) { setActiveTab('prompts'); setCurrentView('project'); } } },
     { id: 'nav-context', label: 'Context', category: 'Navigation', shortcut: '\u23186', keywords: ['docs', 'upload'], action: () => { if (currentProjectId) { setActiveTab('context'); setCurrentView('project'); } } },
     { id: 'nav-outputs', label: 'Outputs', category: 'Navigation', shortcut: '\u23187', keywords: ['generated', 'library'], action: () => { if (currentProjectId) { setActiveTab('outputs'); setCurrentView('project'); } } },
-    { id: 'nav-workflows', label: 'Workflows', category: 'Navigation', shortcut: '\u23188', keywords: ['chain', 'automate', 'pipeline'], action: () => { if (currentProjectId) { setActiveTab('workflows'); setCurrentView('project'); } } },
     { id: 'panel-terminal', label: 'Toggle Terminal', category: 'Panels', shortcut: '\u2318`', action: () => setBottomPanelVisible(v => !v) },
     { id: 'panel-threads', label: 'Toggle Projects', category: 'Panels', shortcut: '\u2318B', action: () => setThreadsOpen(v => !v) },
+    { id: 'panel-focus', label: 'Toggle Focus Mode', category: 'Panels', shortcut: '\u2318\u21e7F', keywords: ['distraction', 'zen'], action: () => setFocusMode(v => !v) },
+    ...THEMES.map(t => ({
+      id: `theme-${t.id}`,
+      label: `Theme: ${t.name}`,
+      category: 'Appearance' as const,
+      keywords: ['theme', 'color', t.name.toLowerCase()],
+      action: () => { setCurrentTheme(t.id); localStorage.setItem('prodforge_theme', t.id); },
+    })),
     { id: 'action-settings', label: 'Settings', category: 'Actions', keywords: ['preferences', 'api key'], action: handleSettingsClick },
     { id: 'action-home', label: 'Home', category: 'Actions', keywords: ['welcome', 'dashboard'], action: handleHomeClick },
   ], [currentProjectId]);
@@ -209,7 +301,10 @@ function App() {
   return (
     <ToastProvider>
     {showSetupWizard && (
-      <SetupWizard onComplete={() => setShowSetupWizard(false)} />
+      <SetupWizard
+        onComplete={() => { localStorage.setItem('prodforge_setup_complete', '1'); setShowSetupWizard(false); }}
+        onSkip={() => setShowSetupWizard(false)}
+      />
     )}
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }} className="bg-codex-bg text-codex-text-primary">
       {/* Activity Bar */}
@@ -217,15 +312,54 @@ function App() {
         activeTab={activeTab}
         onToggleThreads={() => setThreadsOpen(v => !v)}
         onToggleTerminal={() => setBottomPanelVisible(v => !v)}
-        onToggleInsights={() => setShowInsights(v => !v)}
+        onToggleChat={async () => {
+          if (currentProjectId) {
+            setActiveTab('chat');
+            setCurrentView('project');
+          } else {
+            try {
+              let projects = await projectsAPI.list();
+              let targetId: string;
+              if (!projects || projects.length === 0) {
+                const np = await projectsAPI.create('My First Project');
+                targetId = np.id;
+              } else {
+                targetId = projects[0].id;
+              }
+              setCurrentProjectId(targetId);
+              setActiveTab('chat');
+              setCurrentView('project');
+            } catch { /* ignore */ }
+          }
+        }}
+        onToggleEditor={async () => {
+          if (currentProjectId) {
+            setActiveTab('editor');
+            setCurrentView('project');
+          } else {
+            try {
+              let projects = await projectsAPI.list();
+              let targetId: string;
+              if (!projects || projects.length === 0) {
+                const np = await projectsAPI.create('My First Project');
+                targetId = np.id;
+              } else {
+                targetId = projects[0].id;
+              }
+              setCurrentProjectId(targetId);
+              setActiveTab('editor');
+              setCurrentView('project');
+            } catch { /* ignore */ }
+          }
+        }}
         onSettingsClick={handleSettingsClick}
         onHomeClick={handleHomeClick}
         threadsOpen={threadsOpen}
         terminalActive={bottomPanelVisible}
-        insightsOpen={showInsights}
+        chatActive={activeTab === 'chat' && currentView === 'project'}
+        editorActive={activeTab === 'editor' && currentView === 'project'}
         isSettings={currentView === 'settings'}
         isHome={currentView === 'welcome'}
-        hasProject={hasProject}
       />
 
       {/* Main area */}
@@ -239,8 +373,8 @@ function App() {
           <div className="absolute left-3 flex items-center" ref={searchPanelRef}>
             <button
               onClick={() => { setSearchOpen(v => !v); setTimeout(() => searchInputRef.current?.focus(), 100); }}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] transition-colors ${
-                searchOpen ? 'bg-codex-surface text-codex-text-primary' : 'text-codex-text-muted hover:text-codex-text-secondary'
+              className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] transition-all duration-150 ${
+                searchOpen ? 'bg-codex-surface text-codex-text-primary' : 'text-codex-text-muted hover:text-codex-text-secondary hover:bg-white/[0.04] active:bg-white/[0.08] active:scale-[0.97]'
               }`}
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -382,10 +516,10 @@ function App() {
             <button
               key={id}
               onClick={() => { setActiveTab(id); setCurrentView('project'); }}
-              className={`relative flex items-center gap-1.5 px-2.5 h-full transition-colors ${
+              className={`relative flex items-center gap-1.5 px-2.5 h-full transition-all duration-150 rounded-sm ${
                 activeTab === id
-                  ? 'text-codex-text-primary'
-                  : 'text-codex-text-muted hover:text-codex-text-secondary'
+                  ? 'text-codex-text-primary bg-white/[0.06]'
+                  : 'text-codex-text-muted hover:text-codex-text-secondary hover:bg-white/[0.04] active:bg-white/[0.08] active:scale-[0.97]'
               }`}
               title={label}
             >
@@ -398,21 +532,10 @@ function App() {
           ))}
           {!hasProject && (
             <span className="text-xs text-codex-text-muted">
-              {currentView === 'settings' ? 'Settings' : 'PMKit'}
+              {currentView === 'settings' ? 'Settings' : 'ProdForge'}
             </span>
           )}
 
-          {/* Right side: model indicator */}
-          {hasProject && (
-            <div className="absolute right-3 flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-              <span className="text-[10px] text-codex-text-muted">
-                {currentModel === 'gpt-5' ? 'GPT-5' :
-                 currentModel === 'gpt-5-mini' ? 'GPT-5m' :
-                 currentModel === 'gpt-5-nano' ? 'GPT-5n' : currentModel}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Content area */}
@@ -423,29 +546,27 @@ function App() {
               projectId={currentProjectId}
               activeTab={activeTab}
               onTabChange={setActiveTab}
-              onModelChange={setCurrentModel}
-              showInsights={showInsights}
-              onCloseInsights={() => setShowInsights(false)}
               initialChatMessage={pendingChatMessage}
               onInitialChatMessageConsumed={() => setPendingChatMessage(null)}
+              initialProvider={homeProvider}
+              initialModel={homeModel}
             />
           ) : currentView === 'settings' ? (
             <Settings />
           ) : (
-            <div className="flex-1 flex flex-col bg-codex-bg" style={{ height: '100%' }}>
-              {/* Spacer to push content to vertical center */}
-              <div className="flex-1 flex flex-col items-center justify-center px-4">
-                <div className="w-full max-w-2xl">
+            <div className="flex-1 flex flex-col bg-codex-bg overflow-y-auto" style={{ height: '100%' }}>
+              <div className="flex-1 flex flex-col items-center px-4 py-8">
+                <div className="w-full max-w-2xl mt-12">
                   <h1 className="text-2xl font-semibold text-codex-text-primary mb-1 text-center">
                     What are you working on?
                   </h1>
-                  <p className="text-sm text-codex-text-muted mb-8 text-center">
+                  <p className="text-sm text-codex-text-muted mb-6 text-center">
                     Start a conversation or pick a quick action below.
                   </p>
 
                   {/* Chat input */}
                   <div
-                    className="rounded-xl border border-codex-border overflow-hidden mb-6"
+                    className="rounded-xl border border-codex-border mb-6"
                     style={{ backgroundColor: '#2d2d30' }}
                   >
                     <textarea
@@ -459,11 +580,16 @@ function App() {
                         }
                       }}
                       placeholder="Ask anything about product strategy, frameworks, or start a new project..."
-                      rows={3}
+                      rows={8}
                       className="w-full px-4 pt-3 pb-2 bg-transparent text-sm text-codex-text-primary placeholder-codex-text-muted resize-none focus:outline-none"
                     />
                     <div className="flex items-center justify-between px-4 pb-3">
-                      <span className="text-[10px] text-codex-text-muted">Shift+Enter for new line</span>
+                      <ModelSelector
+                        selectedProvider={homeProvider}
+                        selectedModel={homeModel}
+                        onSelect={(provider, model) => { setHomeProvider(provider); setHomeModel(model); }}
+                        compact
+                      />
                       <button
                         onClick={handleWelcomeSubmit}
                         disabled={!welcomeInput.trim() || welcomeLoading}
@@ -480,13 +606,13 @@ function App() {
                   </div>
 
                   {/* Quick action pills */}
-                  <div className="flex flex-wrap justify-center gap-2 mb-6">
+                  <div className="flex flex-wrap justify-center gap-2 mb-8">
                     {[
                       { label: 'Create a PRD', tab: 'frameworks' as Tab },
                       { label: 'RICE Scoring', tab: 'frameworks' as Tab },
                       { label: 'Competitive Analysis', tab: 'frameworks' as Tab },
-                      { label: 'Run a Workflow', tab: 'workflows' as Tab },
                       { label: 'Browse Prompts', tab: 'prompts' as Tab },
+                      { label: 'Manage Context', tab: 'context' as Tab },
                     ].map(item => (
                       <button
                         key={item.label}
@@ -503,19 +629,79 @@ function App() {
                             console.error('Failed to navigate:', e);
                           }
                         }}
-                        className="px-3 py-1.5 rounded-full border border-codex-border text-xs text-codex-text-secondary hover:text-codex-text-primary hover:border-codex-accent/50 hover:bg-codex-surface/30 transition-all"
+                        className="px-3 py-1.5 rounded-full border border-codex-border text-xs text-codex-text-secondary hover:text-codex-text-primary hover:border-codex-accent/50 hover:bg-codex-accent/10 active:scale-[0.96] transition-all duration-150 cursor-pointer"
                       >
                         {item.label}
                       </button>
                     ))}
                   </div>
 
+                  {/* Recent Project */}
+                  {recentProjects.length > 0 && (
+                    <div className="mb-8">
+                      <div className="flex items-center justify-between mb-3">
+                        <h2 className="text-sm font-medium text-codex-text-secondary">Recent Project</h2>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const newProject = await projectsAPI.create('New Project');
+                              if (newProject?.id) handleProjectSelect(newProject.id, 'chat');
+                            } catch (e) { console.error(e); }
+                          }}
+                          className="text-[10px] text-codex-accent hover:text-codex-accent/80 active:scale-[0.96] transition-all duration-150"
+                        >
+                          + New Project
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {recentProjects.map(project => (
+                          <button
+                            key={project.id}
+                            onClick={() => handleProjectSelect(project.id, 'chat')}
+                            className="w-full text-left p-3 rounded-lg border border-codex-border/50 hover:border-codex-accent/40 hover:bg-codex-surface/30 active:scale-[0.99] transition-all duration-150 group cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-medium text-codex-text-primary group-hover:text-codex-accent transition-colors">
+                                {project.name}
+                              </span>
+                              <span className="text-[9px] text-codex-text-muted">
+                                {formatRelativeTime(project.updated_at)}
+                              </span>
+                            </div>
+                            {project.description && (
+                              <div className="text-[10px] text-codex-text-muted truncate mb-1.5">
+                                {project.description}
+                              </div>
+                            )}
+                            {project.conversations.length > 0 && (
+                              <div className="space-y-0.5">
+                                {project.conversations.map(convo => (
+                                  <div
+                                    key={convo.id}
+                                    className="flex items-center gap-2 text-[10px] text-codex-text-muted"
+                                  >
+                                    <svg className="w-3 h-3 flex-shrink-0 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>
+                                    <span className="truncate">{convo.title || 'Untitled conversation'}</span>
+                                    <span className="flex-shrink-0 opacity-60">{convo.model}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {project.conversations.length === 0 && (
+                              <div className="text-[10px] text-codex-text-muted/50 italic">No conversations yet</div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Feature cards */}
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>, label: 'AI Chat', desc: 'Strategy conversations with GPT', tab: 'chat' as Tab },
+                      { icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>, label: 'AI Chat', desc: 'Strategy conversations with AI', tab: 'chat' as Tab },
                       { icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>, label: '45+ Frameworks', desc: 'PRD, JTBD, SWOT, RICE & more', tab: 'frameworks' as Tab },
-                      { icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>, label: 'Workflows', desc: 'Chain frameworks into pipelines', tab: 'workflows' as Tab },
+                      { icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>, label: 'Prompts', desc: 'Saved templates for any task', tab: 'prompts' as Tab },
                     ].map(item => (
                       <button
                         key={item.tab}
@@ -532,7 +718,7 @@ function App() {
                             console.error('Failed to navigate:', e);
                           }
                         }}
-                        className="p-3 rounded-lg border border-codex-border/50 hover:border-codex-accent/40 hover:bg-codex-surface/20 transition-all text-left group"
+                        className="p-3 rounded-lg border border-codex-border/50 hover:border-codex-accent/40 hover:bg-codex-surface/30 active:scale-[0.97] transition-all duration-150 text-left group cursor-pointer"
                       >
                         <div className="text-codex-text-muted group-hover:text-codex-accent transition-colors mb-2">{item.icon}</div>
                         <div className="text-xs font-medium text-codex-text-primary mb-0.5">{item.label}</div>
@@ -553,7 +739,8 @@ function App() {
             <BottomPanel
               height={bottomPanelHeight}
               projectId={currentProjectId}
-              onClose={() => setBottomPanelVisible(false)}
+              onClose={() => { setBottomPanelVisible(false); setBottomPanelTab(undefined); }}
+              initialTab={bottomPanelTab as 'terminal' | 'errors' | undefined}
             />
           </>
         )}
@@ -580,6 +767,31 @@ function App() {
       {/* Shortcut overlay */}
       {shortcutsOpen && (
         <ShortcutOverlay onClose={() => setShortcutsOpen(false)} />
+      )}
+
+      {/* Quick Switcher */}
+      {quickSwitcherOpen && (
+        <QuickSwitcher
+          onSelectProject={(id) => handleProjectSelect(id)}
+          onSelectConversation={(projectId) => handleProjectSelect(projectId, 'chat')}
+          onSelectOutput={(projectId) => handleProjectSelect(projectId, 'outputs')}
+          onClose={() => setQuickSwitcherOpen(false)}
+        />
+      )}
+
+      {/* Focus mode */}
+      {focusMode && currentView === 'project' && currentProjectId && (
+        <FocusMode onExit={() => setFocusMode(false)}>
+          <ProjectView
+            key={`focus-${currentProjectId}`}
+            projectId={currentProjectId}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            initialChatMessage={null}
+            initialProvider={homeProvider}
+            initialModel={homeModel}
+          />
+        </FocusMode>
       )}
     </div>
     </ToastProvider>

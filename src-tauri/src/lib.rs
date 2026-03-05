@@ -1,5 +1,5 @@
-// Modules
 mod commands;
+pub mod pty;
 
 use commands::*;
 
@@ -9,8 +9,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .manage(pty::PtyManager::new())
         .setup(|app| {
-            // Initialize database on startup
             init_db(&app.handle())?;
             Ok(())
         })
@@ -136,6 +136,29 @@ pub fn run() {
             delete_fs_path,
             get_home_directory,
             get_app_directory,
+            create_pty_session,
+            write_pty,
+            resize_pty,
+            close_pty,
+            save_workspace_state,
+            get_workspace_state,
+            save_project_repo_path,
+            get_project_repo_path_cmd,
+            git_status,
+            git_log,
+            git_branches,
+            git_checkout_branch,
+            git_create_branch,
+            git_stage_files,
+            git_unstage_files,
+            git_commit_changes,
+            git_diff_working,
+            git_diff_staged,
+            git_remote_info,
+            git_init_repo,
+            git_clone_repo,
+            git_current_branch,
+            git_stage_all,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

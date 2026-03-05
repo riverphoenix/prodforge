@@ -1,22 +1,50 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component, ReactNode } from 'react';
 import { tokenUsageAPI } from '../lib/ipc';
 import { TokenUsageAggregate, TokenUsage } from '../lib/types';
 import LineChart from './charts/LineChart';
 import PieChart from './charts/PieChart';
 import BarChart from './charts/BarChart';
 
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: string }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: '' };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error: error.message };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <div className="text-codex-text-secondary text-sm">Usage analytics failed to load</div>
+          <div className="text-codex-text-muted text-xs">{this.state.error}</div>
+          <button
+            onClick={() => this.setState({ hasError: false, error: '' })}
+            className="px-3 py-1.5 text-xs bg-codex-surface border border-codex-border rounded-md text-codex-text-secondary hover:text-codex-text-primary"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 type DateRange = '7d' | '30d' | '90d' | 'custom';
 
-export default function AnalyticsDashboard() {
+function AnalyticsDashboardInner() {
   const [dateRange, setDateRange] = useState<DateRange>('30d');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [dailyData, setDailyData] = useState<TokenUsageAggregate[]>([]);
   const [allUsage, setAllUsage] = useState<TokenUsage[]>([]);
-  const [providerData, setProviderData] = useState<Array<{ provider: string; total_cost: number; total_tokens: number }>>([]);
-  const [modelData, setModelData] = useState<Array<{ model: string; total_cost: number; total_tokens: number }>>([]);
+  const [providerData, setProviderData] = useState<Array<{ provider: string; cost: number; total_tokens: number }>>([]);
+  const [modelData, setModelData] = useState<Array<{ model: string; cost: number; total_tokens: number }>>([]);
 
   const getDateRange = (): { start: string; end: string } => {
     const end = customEnd || new Date().toISOString().split('T')[0];
@@ -32,20 +60,24 @@ export default function AnalyticsDashboard() {
 
   const loadData = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const { start, end } = getDateRange();
-      const [daily, all, byProvider, byModel] = await Promise.all([
+      const results = await Promise.allSettled([
         tokenUsageAPI.getByDateRange(start, end, 'daily'),
         tokenUsageAPI.getAll(),
         tokenUsageAPI.getByProvider(start, end),
         tokenUsageAPI.getByModel(start, end),
       ]);
-      setDailyData(daily);
-      setAllUsage(all);
-      setProviderData(byProvider as Array<{ provider: string; total_cost: number; total_tokens: number }>);
-      setModelData(byModel as Array<{ model: string; total_cost: number; total_tokens: number }>);
+      const safe = <T,>(r: PromiseSettledResult<T>, fallback: T): T =>
+        r.status === 'fulfilled' && r.value ? r.value : fallback;
+      setDailyData(safe(results[0], []) as TokenUsageAggregate[]);
+      setAllUsage(safe(results[1], []) as TokenUsage[]);
+      setProviderData(safe(results[2], []) as Array<{ provider: string; cost: number; total_tokens: number }>);
+      setModelData(safe(results[3], []) as Array<{ model: string; cost: number; total_tokens: number }>);
     } catch (err) {
       console.error('Failed to load analytics:', err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -67,9 +99,9 @@ export default function AnalyticsDashboard() {
     }
   };
 
-  const totalTokens = dailyData.reduce((s, d) => s + d.total_tokens, 0);
-  const totalCost = dailyData.reduce((s, d) => s + d.cost, 0);
-  const activeDays = dailyData.filter(d => d.total_tokens > 0).length;
+  const totalTokens = Array.isArray(dailyData) ? dailyData.reduce((s, d) => s + (d?.total_tokens || 0), 0) : 0;
+  const totalCost = Array.isArray(dailyData) ? dailyData.reduce((s, d) => s + (d?.cost || 0), 0) : 0;
+  const activeDays = Array.isArray(dailyData) ? dailyData.filter(d => d?.total_tokens > 0).length : 0;
   const avgCostPerDay = activeDays > 0 ? totalCost / activeDays : 0;
 
   const providerColors: Record<string, string> = {
@@ -83,6 +115,21 @@ export default function AnalyticsDashboard() {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="text-codex-text-secondary text-sm">Loading analytics...</div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <div className="text-codex-text-secondary text-sm">Failed to load analytics</div>
+        <div className="text-codex-text-muted text-xs">{loadError}</div>
+        <button
+          onClick={loadData}
+          className="px-3 py-1.5 text-xs bg-codex-surface border border-codex-border rounded-md text-codex-text-secondary hover:text-codex-text-primary"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -153,27 +200,24 @@ export default function AnalyticsDashboard() {
 
       {/* Charts row */}
       <div className="grid grid-cols-2 gap-4">
-        {/* Token usage trend */}
         <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
           <h3 className="text-sm font-medium text-codex-text-primary mb-3">Token Usage Trend</h3>
           <LineChart
-            data={dailyData.map(d => ({ label: d.date, value: d.total_tokens }))}
+            data={(dailyData || []).map(d => ({ label: d?.date || '', value: d?.total_tokens || 0 }))}
             height={180}
             color="#4f46e5"
           />
         </div>
-
-        {/* Cost by provider */}
         <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
           <h3 className="text-sm font-medium text-codex-text-primary mb-3">Cost by Provider</h3>
           <PieChart
-            data={providerData.map(d => ({
-              label: d.provider.charAt(0).toUpperCase() + d.provider.slice(1),
-              value: d.total_cost,
-              color: providerColors[d.provider] || '#71717a',
+            data={(providerData || []).map(d => ({
+              label: (d?.provider || 'unknown').charAt(0).toUpperCase() + (d?.provider || 'unknown').slice(1),
+              value: d?.cost || 0,
+              color: providerColors[d?.provider] || '#71717a',
             }))}
             size={160}
-            formatValue={(v) => `$${v.toFixed(2)}`}
+            formatValue={(v) => `$${(v || 0).toFixed(2)}`}
           />
         </div>
       </div>
@@ -182,18 +226,18 @@ export default function AnalyticsDashboard() {
       <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
         <h3 className="text-sm font-medium text-codex-text-primary mb-3">Cost by Model</h3>
         <BarChart
-          data={modelData
-            .sort((a, b) => b.total_cost - a.total_cost)
-            .map(d => ({ label: d.model, value: d.total_cost }))}
-          height={Math.max(140, modelData.length * 34)}
-          formatValue={(v) => `$${v.toFixed(4)}`}
+          data={(modelData || [])
+            .sort((a, b) => (b?.cost || 0) - (a?.cost || 0))
+            .map(d => ({ label: d?.model || 'unknown', value: d?.cost || 0 }))}
+          height={Math.max(140, (modelData || []).length * 34)}
+          formatValue={(v) => `$${(v || 0).toFixed(4)}`}
         />
       </div>
 
       {/* Generation history */}
       <div className="bg-codex-surface/50 rounded-lg p-4 border border-codex-border">
         <h3 className="text-sm font-medium text-codex-text-primary mb-3">Generation History</h3>
-        {allUsage.length === 0 ? (
+        {!allUsage || allUsage.length === 0 ? (
           <div className="text-center py-6 text-codex-text-muted text-sm">No usage records</div>
         ) : (
           <div className="overflow-x-auto">
@@ -211,19 +255,19 @@ export default function AnalyticsDashboard() {
               </thead>
               <tbody>
                 {allUsage.slice(0, 50).map((usage) => (
-                  <tr key={usage.id} className="border-b border-codex-border/30 hover:bg-codex-surface/30">
+                  <tr key={usage?.id || Math.random()} className="border-b border-codex-border/30 hover:bg-codex-surface/30">
                     <td className="py-2 px-3 text-codex-text-secondary text-xs">
-                      {new Date(usage.created_at * 1000).toLocaleDateString()}
+                      {usage?.created_at ? new Date(usage.created_at * 1000).toLocaleDateString() : '-'}
                     </td>
                     <td className="py-2 px-3 text-xs">
-                      <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: providerColors[usage.provider] || '#71717a' }} />
-                      <span className="text-codex-text-secondary">{usage.provider}</span>
+                      <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: providerColors[usage?.provider] || '#71717a' }} />
+                      <span className="text-codex-text-secondary">{usage?.provider || '-'}</span>
                     </td>
-                    <td className="py-2 px-3 text-codex-text-secondary text-xs">{usage.model}</td>
-                    <td className="py-2 px-3 text-right text-codex-text-secondary text-xs">{usage.input_tokens.toLocaleString()}</td>
-                    <td className="py-2 px-3 text-right text-codex-text-secondary text-xs">{usage.output_tokens.toLocaleString()}</td>
-                    <td className="py-2 px-3 text-right text-codex-text-primary text-xs">{usage.total_tokens.toLocaleString()}</td>
-                    <td className="py-2 px-3 text-right text-codex-accent text-xs">${usage.cost.toFixed(4)}</td>
+                    <td className="py-2 px-3 text-codex-text-secondary text-xs">{usage?.model || '-'}</td>
+                    <td className="py-2 px-3 text-right text-codex-text-secondary text-xs">{(usage?.input_tokens || 0).toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right text-codex-text-secondary text-xs">{(usage?.output_tokens || 0).toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right text-codex-text-primary text-xs">{(usage?.total_tokens || 0).toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right text-codex-accent text-xs">${(usage?.cost || 0).toFixed(4)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -237,5 +281,13 @@ export default function AnalyticsDashboard() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AnalyticsDashboard() {
+  return (
+    <ErrorBoundary>
+      <AnalyticsDashboardInner />
+    </ErrorBoundary>
   );
 }

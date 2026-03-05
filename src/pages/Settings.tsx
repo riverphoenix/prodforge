@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Settings as SettingsType, LLMProvider } from '../lib/types';
-import { settingsAPI, integrationsAPI, modelsAPI } from '../lib/ipc';
+import { settingsAPI, modelsAPI } from '../lib/ipc';
 import AnalyticsDashboard from '../components/AnalyticsDashboard';
 
-type SettingsTab = 'general' | 'profile' | 'usage' | 'integrations';
+type SettingsTab = 'general' | 'profile' | 'context' | 'usage';
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
@@ -47,19 +47,7 @@ export default function Settings() {
   const [enabledModels, setEnabledModels] = useState<Record<string, string[]>>({});
   const [discoveringModels, setDiscoveringModels] = useState<Record<string, boolean>>({});
   const [modelsExpanded, setModelsExpanded] = useState(false);
-
-
-  const [jiraUrl, setJiraUrl] = useState('');
-  const [jiraEmail, setJiraEmail] = useState('');
-  const [jiraToken, setJiraToken] = useState('');
-  const [jiraProjectKey, setJiraProjectKey] = useState('');
-  const [notionToken, setNotionToken] = useState('');
-  const [notionParentPageId, setNotionParentPageId] = useState('');
-  const [testingJira, setTestingJira] = useState(false);
-  const [testingNotion, setTestingNotion] = useState(false);
-  const [jiraStatus, setJiraStatus] = useState<'none' | 'success' | 'error'>('none');
-  const [notionStatus, setNotionStatus] = useState<'none' | 'success' | 'error'>('none');
-  const [savingIntegrations, setSavingIntegrations] = useState(false);
+  const [globalContext, setGlobalContext] = useState('');
 
   useEffect(() => {
     loadSettings();
@@ -79,17 +67,13 @@ export default function Settings() {
       setCompanyUrl(data.company_url || '');
       setAboutMe(data.about_me || '');
       setAboutRole(data.about_role || '');
-      setJiraUrl(data.jira_url || '');
-      setJiraEmail(data.jira_email || '');
-      setJiraProjectKey(data.jira_project_key || '');
-      setNotionParentPageId(data.notion_parent_page_id || '');
-
       setOllamaBaseUrl(data.ollama_base_url || 'http://localhost:11434');
       setDefaultProvider((data.default_provider as LLMProvider) || 'openai');
 
       if (data.enabled_models) {
         try { setEnabledModels(JSON.parse(data.enabled_models)); } catch { /* ignore */ }
       }
+      setGlobalContext(data.global_context || '');
 
       const maskKey = (key: string | null): string => {
         if (key && key.length > 5) {
@@ -150,6 +134,7 @@ export default function Settings() {
         ollama_base_url: ollamaBaseUrl || undefined,
         default_provider: defaultProvider || undefined,
         enabled_models: Object.keys(enabledModels).length > 0 ? JSON.stringify(enabledModels) : undefined,
+        global_context: globalContext || undefined,
       });
       setApiKey('');
       setAnthropicApiKey('');
@@ -243,7 +228,7 @@ export default function Settings() {
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: 'general', label: 'General' },
     { id: 'profile', label: 'Personalization' },
-    { id: 'integrations', label: 'Integrations' },
+    { id: 'context', label: 'Global Context' },
     { id: 'usage', label: 'Usage' },
   ];
 
@@ -758,6 +743,47 @@ export default function Settings() {
           </div>
         )}
 
+        {activeTab === 'context' && (
+          <div className="max-w-2xl">
+            <h1 className="text-2xl font-semibold text-codex-text-primary mb-2">Global Context</h1>
+            <p className="text-sm text-codex-text-secondary mb-8">
+              Instructions and context included in every AI generation and conversation.
+            </p>
+
+            <div className="space-y-0">
+              <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-codex-text-primary">System Instructions</div>
+                  <div className="text-xs text-codex-text-secondary mt-1">
+                    Persistent context included in all AI interactions. Use this for company guidelines,
+                    writing style, tone preferences, or any instructions the AI should always follow.
+                  </div>
+                </div>
+              </div>
+              <textarea
+                value={globalContext}
+                onChange={(e) => setGlobalContext(e.target.value)}
+                placeholder={"e.g., Always write in a professional tone. Our company builds B2B SaaS products.\nUse British English spelling. Focus on data-driven recommendations."}
+                rows={12}
+                className="w-full mt-4 px-4 py-3 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent resize-none font-mono"
+              />
+              <div className="mt-2 text-xs text-codex-text-muted">
+                {globalContext.length} characters
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-4 py-2 bg-codex-accent hover:bg-codex-accent-hover disabled:opacity-50 text-white rounded-md text-sm transition-colors"
+              >
+                {saving ? 'Saving...' : 'Save Context'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'usage' && (
           <div className="max-w-4xl">
             <h1 className="text-2xl font-semibold text-codex-text-primary mb-8">Usage & Analytics</h1>
@@ -765,183 +791,6 @@ export default function Settings() {
           </div>
         )}
 
-        {activeTab === 'integrations' && (
-          <div className="max-w-2xl">
-            <h1 className="text-2xl font-semibold text-codex-text-primary mb-8">Integrations</h1>
-
-            <div className="mb-8">
-              <h2 className="text-lg font-medium text-codex-text-primary mb-4">Jira</h2>
-              <div className="space-y-0">
-                <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-codex-text-primary">Jira URL</div>
-                    <div className="text-xs text-codex-text-secondary mt-1">e.g. https://your-company.atlassian.net</div>
-                  </div>
-                  <input
-                    type="url"
-                    value={jiraUrl}
-                    onChange={(e) => setJiraUrl(e.target.value)}
-                    placeholder="https://your-company.atlassian.net"
-                    className="w-72 px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
-                  />
-                </div>
-                <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-codex-text-primary">Email</div>
-                  </div>
-                  <input
-                    type="email"
-                    value={jiraEmail}
-                    onChange={(e) => setJiraEmail(e.target.value)}
-                    placeholder="you@company.com"
-                    className="w-72 px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
-                  />
-                </div>
-                <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-codex-text-primary">API Token</div>
-                    <div className="text-xs text-codex-text-secondary mt-1">Encrypted and stored locally</div>
-                  </div>
-                  <input
-                    type="password"
-                    value={jiraToken}
-                    onChange={(e) => setJiraToken(e.target.value)}
-                    placeholder="Enter Jira API token"
-                    className="w-72 px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
-                  />
-                </div>
-                <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-codex-text-primary">Default Project Key</div>
-                  </div>
-                  <input
-                    type="text"
-                    value={jiraProjectKey}
-                    onChange={(e) => setJiraProjectKey(e.target.value)}
-                    placeholder="PROJ"
-                    className="w-72 px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
-                  />
-                </div>
-                <div className="flex items-center gap-3 mt-3">
-                  <button
-                    onClick={async () => {
-                      setTestingJira(true);
-                      setJiraStatus('none');
-                      try {
-                        await settingsAPI.update({
-                          jira_url: jiraUrl || undefined,
-                          jira_email: jiraEmail || undefined,
-                          jira_api_token: jiraToken || undefined,
-                          jira_project_key: jiraProjectKey || undefined,
-                        });
-                        const ok = await integrationsAPI.testJiraConnection();
-                        setJiraStatus(ok ? 'success' : 'error');
-                      } catch {
-                        setJiraStatus('error');
-                      } finally {
-                        setTestingJira(false);
-                      }
-                    }}
-                    disabled={testingJira || !jiraUrl || !jiraEmail}
-                    className="px-3 py-2 text-xs bg-codex-surface border border-codex-border rounded-md text-codex-text-primary hover:bg-codex-surface-hover disabled:opacity-50"
-                  >
-                    {testingJira ? 'Testing...' : 'Test Connection'}
-                  </button>
-                  {jiraStatus === 'success' && <span className="text-xs text-green-400">Connected</span>}
-                  {jiraStatus === 'error' && <span className="text-xs text-red-400">Connection failed</span>}
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-8">
-              <h2 className="text-lg font-medium text-codex-text-primary mb-4">Notion</h2>
-              <div className="space-y-0">
-                <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-codex-text-primary">Integration Token</div>
-                    <div className="text-xs text-codex-text-secondary mt-1">Create at notion.so/my-integrations</div>
-                  </div>
-                  <input
-                    type="password"
-                    value={notionToken}
-                    onChange={(e) => setNotionToken(e.target.value)}
-                    placeholder="Enter Notion integration token"
-                    className="w-72 px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
-                  />
-                </div>
-                <div className="flex items-start justify-between gap-8 py-4 border-b border-codex-border/50">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-codex-text-primary">Default Parent Page ID</div>
-                    <div className="text-xs text-codex-text-secondary mt-1">Optional. Exports will go under this page.</div>
-                  </div>
-                  <input
-                    type="text"
-                    value={notionParentPageId}
-                    onChange={(e) => setNotionParentPageId(e.target.value)}
-                    placeholder="Page ID (optional)"
-                    className="w-72 px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
-                  />
-                </div>
-                <div className="flex items-center gap-3 mt-3">
-                  <button
-                    onClick={async () => {
-                      setTestingNotion(true);
-                      setNotionStatus('none');
-                      try {
-                        await settingsAPI.update({
-                          notion_api_token: notionToken || undefined,
-                          notion_parent_page_id: notionParentPageId || undefined,
-                        });
-                        const ok = await integrationsAPI.testNotionConnection();
-                        setNotionStatus(ok ? 'success' : 'error');
-                      } catch {
-                        setNotionStatus('error');
-                      } finally {
-                        setTestingNotion(false);
-                      }
-                    }}
-                    disabled={testingNotion || !notionToken}
-                    className="px-3 py-2 text-xs bg-codex-surface border border-codex-border rounded-md text-codex-text-primary hover:bg-codex-surface-hover disabled:opacity-50"
-                  >
-                    {testingNotion ? 'Testing...' : 'Test Connection'}
-                  </button>
-                  {notionStatus === 'success' && <span className="text-xs text-green-400">Connected</span>}
-                  {notionStatus === 'error' && <span className="text-xs text-red-400">Connection failed</span>}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                onClick={async () => {
-                  setSavingIntegrations(true);
-                  try {
-                    await settingsAPI.update({
-                      jira_url: jiraUrl || undefined,
-                      jira_email: jiraEmail || undefined,
-                      jira_api_token: jiraToken || undefined,
-                      jira_project_key: jiraProjectKey || undefined,
-                      notion_api_token: notionToken || undefined,
-                      notion_parent_page_id: notionParentPageId || undefined,
-                    });
-                    setJiraToken('');
-                    setNotionToken('');
-                    await loadSettings();
-                    alert('Integration settings saved!');
-                  } catch {
-                    alert('Failed to save integration settings.');
-                  } finally {
-                    setSavingIntegrations(false);
-                  }
-                }}
-                disabled={savingIntegrations}
-                className="px-4 py-2 bg-codex-accent hover:bg-codex-accent-hover disabled:opacity-50 text-white rounded-md text-sm transition-colors"
-              >
-                {savingIntegrations ? 'Saving...' : 'Save Integrations'}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Delete Confirmation Dialog */}

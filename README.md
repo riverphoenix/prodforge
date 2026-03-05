@@ -1,4 +1,4 @@
-# PMKit
+# ProdForge
 
 An AI-powered desktop toolkit for Product Managers. Built with Tauri 2, React 19, and multi-model LLM support.
 
@@ -43,8 +43,8 @@ An AI-powered desktop toolkit for Product Managers. Built with Tauri 2, React 19
 ## Installation
 
 ```bash
-git clone git@github.com:dsotiriou/pmkit.git
-cd pmkit
+git clone git@github.com:riverphoenix/prodforge.git
+cd prodforge
 
 # Frontend dependencies
 npm install
@@ -101,7 +101,7 @@ Outputs a `.dmg` installer in `src-tauri/target/release/bundle/dmg/`.
 ## Project Structure
 
 ```
-pmkit/
+prodforge/
 ├── src/                    # React frontend
 │   ├── components/         # UI components (ActivityBar, ChatInterface, ModelSelector, etc.)
 │   ├── pages/              # Page views (ProjectView, FileExplorer, Settings, etc.)

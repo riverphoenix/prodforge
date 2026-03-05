@@ -96,6 +96,7 @@ export interface Settings {
   ollama_base_url?: string;
   default_provider?: string;
   enabled_models?: string;
+  global_context?: string;
   created_at: number;
   updated_at: number;
 }
@@ -122,6 +123,7 @@ export interface SettingsUpdate {
   ollama_base_url?: string;
   default_provider?: string;
   enabled_models?: string;
+  global_context?: string;
 }
 
 export interface TokenUsage {
@@ -407,4 +409,30 @@ export interface FileEntry {
   size: number;
   modified: number;
   extension: string;
+}
+
+export interface GitFileStatus {
+  path: string;
+  status: string;
+  staged: boolean;
+}
+
+export interface GitBranchInfo {
+  name: string;
+  is_current: boolean;
+  is_remote: boolean;
+  upstream?: string;
+}
+
+export interface GitLogEntry {
+  oid: string;
+  message: string;
+  author: string;
+  email: string;
+  timestamp: number;
+}
+
+export interface GitRemoteInfo {
+  name: string;
+  url: string;
 }

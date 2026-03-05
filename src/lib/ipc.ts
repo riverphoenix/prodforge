@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { Project, Conversation, Message, Settings, SettingsUpdate, TokenUsage, TokenUsageAggregate, ContextDocument, FrameworkOutput, Folder, SearchResult, CommandHistoryEntry, CommandResult, FrameworkDefinition, FrameworkCategory, SavedPrompt, PromptVariable, ImportPreview, ImportResult, BatchExportResult, ConflictAction, Workflow, WorkflowRun, WorkflowRunStep, ProjectInsight, CommitInfo, JiraProject, JiraExportResult, NotionPage, NotionExportResult, FileEntry, LLMProvider, ProviderInfo } from './types';
+import { Project, Conversation, Message, Settings, SettingsUpdate, TokenUsage, TokenUsageAggregate, ContextDocument, FrameworkOutput, Folder, SearchResult, CommandHistoryEntry, CommandResult, FrameworkDefinition, FrameworkCategory, SavedPrompt, PromptVariable, ImportPreview, ImportResult, BatchExportResult, ConflictAction, Workflow, WorkflowRun, WorkflowRunStep, ProjectInsight, CommitInfo, JiraProject, JiraExportResult, NotionPage, NotionExportResult, FileEntry, LLMProvider, ProviderInfo, GitFileStatus, GitBranchInfo, GitLogEntry, GitRemoteInfo } from './types';
 
 interface FrameworkDefRow {
   id: string;
@@ -210,7 +210,7 @@ export const tokenUsageAPI = {
 };
 
 // Python sidecar API (direct HTTP calls)
-const SIDECAR_URL = 'http://127.0.0.1:8000';
+export const SIDECAR_URL = 'http://127.0.0.1:8001';
 
 export const modelsAPI = {
   async list(apiKey: string): Promise<string[]> {
@@ -221,8 +221,7 @@ export const modelsAPI = {
       }
       const data = await response.json();
       return data.models || [];
-    } catch (error) {
-      console.error('Error fetching models:', error);
+    } catch {
       return [
         'gpt-5',
         'gpt-5-mini',
@@ -239,8 +238,7 @@ export const modelsAPI = {
       if (!response.ok) throw new Error(`Failed to fetch ${provider} models`);
       const data = await response.json();
       return data.models || [];
-    } catch (error) {
-      console.error(`Error fetching ${provider} models:`, error);
+    } catch {
       const fallbacks: Record<string, string[]> = {
         openai: ['gpt-5', 'gpt-5-mini', 'gpt-5-nano'],
         anthropic: ['claude-sonnet-4-5-20250514', 'claude-haiku-4-5-20251001'],
@@ -314,6 +312,39 @@ export const terminalAPI = {
 
   async completePath(projectId: string, partial: string): Promise<string[]> {
     return await invoke('complete_path', { projectId, partial });
+  },
+};
+
+export const workspaceAPI = {
+  async saveState(projectId: string, stateJson: string): Promise<void> {
+    return await invoke('save_workspace_state', { projectId, stateJson });
+  },
+  async getState(projectId: string): Promise<string | null> {
+    return await invoke('get_workspace_state', { projectId });
+  },
+  async saveRepoPath(projectId: string, repoPath: string): Promise<void> {
+    return await invoke('save_project_repo_path', { projectId, repoPath });
+  },
+  async getRepoPath(projectId: string): Promise<string | null> {
+    return await invoke('get_project_repo_path_cmd', { projectId });
+  },
+};
+
+export const ptyAPI = {
+  async create(cols: number, rows: number, cwd?: string): Promise<string> {
+    return await invoke('create_pty_session', { cols, rows, cwd });
+  },
+
+  async write(sessionId: string, data: string): Promise<void> {
+    return await invoke('write_pty', { sessionId, data });
+  },
+
+  async resize(sessionId: string, cols: number, rows: number): Promise<void> {
+    return await invoke('resize_pty', { sessionId, cols, rows });
+  },
+
+  async close(sessionId: string): Promise<void> {
+    return await invoke('close_pty', { sessionId });
   },
 };
 
@@ -788,6 +819,52 @@ export const gitAPI = {
 
   async rollbackOutput(projectId: string, outputId: string, commitOid: string): Promise<string> {
     return await invoke('rollback_output', { projectId, outputId, commitOid });
+  },
+
+  async status(repoPath: string): Promise<GitFileStatus[]> {
+    return await invoke('git_status', { repoPath });
+  },
+  async log(repoPath: string, limit?: number): Promise<GitLogEntry[]> {
+    return await invoke('git_log', { repoPath, limit });
+  },
+  async branches(repoPath: string): Promise<GitBranchInfo[]> {
+    return await invoke('git_branches', { repoPath });
+  },
+  async checkoutBranch(repoPath: string, branchName: string): Promise<void> {
+    return await invoke('git_checkout_branch', { repoPath, branchName });
+  },
+  async createBranch(repoPath: string, branchName: string): Promise<void> {
+    return await invoke('git_create_branch', { repoPath, branchName });
+  },
+  async stageFiles(repoPath: string, files: string[]): Promise<void> {
+    return await invoke('git_stage_files', { repoPath, files });
+  },
+  async unstageFiles(repoPath: string, files: string[]): Promise<void> {
+    return await invoke('git_unstage_files', { repoPath, files });
+  },
+  async stageAll(repoPath: string): Promise<void> {
+    return await invoke('git_stage_all', { repoPath });
+  },
+  async commit(repoPath: string, message: string, authorName?: string, authorEmail?: string): Promise<string> {
+    return await invoke('git_commit_changes', { repoPath, message, authorName, authorEmail });
+  },
+  async diffWorking(repoPath: string): Promise<string> {
+    return await invoke('git_diff_working', { repoPath });
+  },
+  async diffStaged(repoPath: string): Promise<string> {
+    return await invoke('git_diff_staged', { repoPath });
+  },
+  async remoteInfo(repoPath: string): Promise<GitRemoteInfo[]> {
+    return await invoke('git_remote_info', { repoPath });
+  },
+  async initNewRepo(repoPath: string): Promise<void> {
+    return await invoke('git_init_repo', { repoPath });
+  },
+  async cloneRepo(url: string, targetPath: string): Promise<void> {
+    return await invoke('git_clone_repo', { url, targetPath });
+  },
+  async currentBranch(repoPath: string): Promise<string> {
+    return await invoke('git_current_branch', { repoPath });
   },
 };
 

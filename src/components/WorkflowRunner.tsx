@@ -74,37 +74,45 @@ export default function WorkflowRunner({ projectId, workflowId, apiKey, framewor
 
     const settings = await settingsAPI.get();
 
-    const response = await fetch('http://127.0.0.1:8000/generate-framework/stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal,
-      body: JSON.stringify({
-        project_id: projectId,
-        framework_id: framework.id,
-        framework_definition: {
-          id: framework.id,
-          name: framework.name,
-          system_prompt: framework.system_prompt,
-          guiding_questions: framework.guiding_questions,
-          example_output: framework.example_output,
-        },
-        context_documents: contextDocuments,
-        user_prompt: prompt,
-        api_key: apiKey,
-        model,
-        user_profile: settings ? {
-          name: settings.name,
-          surname: settings.surname,
-          job_title: settings.job_title,
-          company: settings.company,
-          about_me: settings.about_me,
-          about_role: settings.about_role,
-        } : undefined,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch('http://127.0.0.1:8001/generate-framework/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+        body: JSON.stringify({
+          project_id: projectId,
+          framework_id: framework.id,
+          framework_definition: {
+            id: framework.id,
+            name: framework.name,
+            system_prompt: framework.system_prompt,
+            guiding_questions: framework.guiding_questions,
+            example_output: framework.example_output,
+          },
+          context_documents: contextDocuments,
+          user_prompt: prompt,
+          api_key: apiKey,
+          model,
+          provider: settings?.default_provider || 'openai',
+          user_profile: settings ? {
+            name: settings.name,
+            surname: settings.surname,
+            job_title: settings.job_title,
+            company: settings.company,
+            about_me: settings.about_me,
+            about_role: settings.about_role,
+          } : undefined,
+        }),
+      });
+    } catch (fetchErr) {
+      if (fetchErr instanceof Error && fetchErr.name === 'AbortError') throw fetchErr;
+      throw new Error('Cannot connect to AI server. Please ensure the Python sidecar is running (cd python-sidecar && python main.py).');
+    }
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const errText = await response.text().catch(() => '');
+      throw new Error(`Server error (${response.status}): ${errText || response.statusText}`);
     }
 
     const reader = response.body?.getReader();

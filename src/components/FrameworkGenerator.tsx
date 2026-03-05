@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { getFramework } from '../lib/frameworks';
@@ -9,6 +9,7 @@ import ResizableDivider from './ResizableDivider';
 import FrameworkCustomizer from './FrameworkCustomizer';
 import PromptPickerModal from './PromptPickerModal';
 import ModelSelector from './ModelSelector';
+import { getFrameworkState, setFrameworkState } from '../lib/frameworkStore';
 
 interface FrameworkGeneratorProps {
   projectId: string;
@@ -41,11 +42,9 @@ export default function FrameworkGenerator({
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Chat refinement state
-  const [showRefinementChat, setShowRefinementChat] = useState(false);
   const [refinementMessages, setRefinementMessages] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
   const [refinementInput, setRefinementInput] = useState('');
   const [isRefining, setIsRefining] = useState(false);
-  const [selectedRefinementDocs, setSelectedRefinementDocs] = useState<string[]>([]);
 
   // Customizer state
   const [showCustomizer, setShowCustomizer] = useState(false);
@@ -125,6 +124,39 @@ export default function FrameworkGenerator({
     loadDocs();
   }, [projectId, frameworkId]);
 
+  // Restore cached state on mount
+  useEffect(() => {
+    const cached = getFrameworkState(projectId, frameworkId);
+    if (cached) {
+      if (cached.generatedContent) setGeneratedContent(cached.generatedContent);
+      if (cached.userPrompt) setUserPrompt(cached.userPrompt);
+      if (cached.selectedDocIds?.length) setSelectedDocIds(cached.selectedDocIds);
+      if (cached.outputName) setOutputName(cached.outputName);
+      if (cached.selectedProvider) setSelectedProvider(cached.selectedProvider as LLMProvider);
+      if (cached.selectedModel) setSelectedModel(cached.selectedModel);
+      if (cached.refinementMessages?.length) setRefinementMessages(cached.refinementMessages);
+    }
+  }, [projectId, frameworkId]);
+
+  // Save state to store on unmount or when key values change
+  const saveToStore = useCallback(() => {
+    if (!frameworkId) return;
+    setFrameworkState(projectId, frameworkId, {
+      frameworkId,
+      generatedContent,
+      userPrompt,
+      selectedDocIds,
+      outputName,
+      selectedProvider,
+      selectedModel,
+      refinementMessages,
+    });
+  }, [projectId, frameworkId, generatedContent, userPrompt, selectedDocIds, outputName, selectedProvider, selectedModel, refinementMessages]);
+
+  useEffect(() => {
+    return () => { saveToStore(); };
+  }, [saveToStore]);
+
   // Autoscroll as content generates
   useEffect(() => {
     if (isGenerating && contentRef.current) {
@@ -193,7 +225,7 @@ export default function FrameworkGenerator({
       if (newDocUrl.trim()) {
         try {
           console.log('🔗 Fetching URL:', newDocUrl.trim());
-          const response = await fetch('http://127.0.0.1:8000/fetch-url', {
+          const response = await fetch('http://127.0.0.1:8001/fetch-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: newDocUrl.trim() }),
@@ -235,49 +267,65 @@ export default function FrameworkGenerator({
       console.log('📝 Using prompt:', prompt.substring(0, 100) + '...');
 
       // Call STREAMING endpoint
-      const url = 'http://127.0.0.1:8000/generate-framework/stream';
+      const url = 'http://127.0.0.1:8001/generate-framework/stream';
       console.log('🌐 Calling streaming endpoint:', url);
 
       // Create abort controller for cancellation
       abortControllerRef.current = new AbortController();
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abortControllerRef.current.signal,
-        body: JSON.stringify({
-          project_id: projectId,
-          framework_id: frameworkId,
-          framework_definition: {
-            id: framework.id,
-            name: framework.name,
-            category: framework.category,
-            description: framework.description,
-            icon: framework.icon,
-            system_prompt: framework.system_prompt,
-            guiding_questions: framework.guiding_questions,
-            example_output: framework.example_output,
-            supports_visuals: framework.supports_visuals,
-            visual_instructions: framework.visual_instructions || null,
-          },
-          context_documents: docs.map(d => ({
-            id: d.id,
-            name: d.name,
-            type: d.type,
-            content: d.content,
-            url: d.url
-          })),
-          user_prompt: prompt,
-          api_key: apiKey,
-          model: selectedModel,
-          provider: selectedProvider,
-        })
-      });
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: abortControllerRef.current.signal,
+          body: JSON.stringify({
+            project_id: projectId,
+            framework_id: frameworkId,
+            framework_definition: {
+              id: framework.id,
+              name: framework.name,
+              category: framework.category,
+              description: framework.description,
+              icon: framework.icon,
+              system_prompt: framework.system_prompt,
+              guiding_questions: framework.guiding_questions,
+              example_output: framework.example_output,
+              supports_visuals: framework.supports_visuals,
+              visual_instructions: framework.visual_instructions || null,
+            },
+            context_documents: docs.map(d => ({
+              id: d.id,
+              name: d.name,
+              type: d.type,
+              content: d.content,
+              url: d.url
+            })),
+            user_prompt: prompt,
+            api_key: apiKey,
+            model: selectedModel,
+            provider: selectedProvider,
+            personal_info: await settingsAPI.get().then(s => {
+              const parts: string[] = [];
+              if (s.name || s.surname) parts.push(`Name: ${[s.name, s.surname].filter(Boolean).join(' ')}`);
+              if (s.job_title) parts.push(`Role: ${s.job_title}`);
+              if (s.company) parts.push(`Company: ${s.company}`);
+              if (s.about_me) parts.push(s.about_me);
+              if (s.about_role) parts.push(s.about_role);
+              return parts.length > 0 ? parts.join('\n') : undefined;
+            }).catch(() => undefined),
+            global_context: await settingsAPI.get().then(s => s.global_context || undefined).catch(() => undefined),
+          })
+        });
+      } catch (fetchErr) {
+        if (fetchErr instanceof Error && fetchErr.name === 'AbortError') throw fetchErr;
+        throw new Error('Cannot connect to AI server. Please ensure the Python sidecar is running (cd python-sidecar && python main.py).');
+      }
 
       console.log('📡 Response status:', response.status, response.statusText);
 
       if (!response.ok) {
-        const errorText = await response.text();
+        const errorText = await response.text().catch(() => '');
         console.error('❌ API error response:', errorText);
         let errorMessage = 'Failed to generate framework';
         try {
@@ -344,7 +392,22 @@ export default function FrameworkGenerator({
       if (!streamedContent) {
         throw new Error('No content received from stream');
       }
-      // Don't auto-show save dialog - let user click Save button
+
+      // Auto-save to outputs library
+      try {
+        await frameworkOutputsAPI.create(
+          projectId,
+          frameworkId,
+          framework.category,
+          outputName || `${framework.name} - ${new Date().toLocaleDateString()}`,
+          userPrompt,
+          selectedDocIds,
+          streamedContent,
+          'markdown'
+        );
+      } catch (saveErr) {
+        console.error('Auto-save to outputs failed:', saveErr);
+      }
 
     } catch (err) {
       // Ignore abort errors (user cancelled)
@@ -354,7 +417,10 @@ export default function FrameworkGenerator({
       }
 
       console.error('❌ Generation error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      let errorMessage = err instanceof Error ? err.message : String(err);
+      if (!errorMessage || errorMessage === '{}' || errorMessage === '[object Object]') {
+        errorMessage = 'Generation failed. Please check that the Python sidecar is running and your API key is valid.';
+      }
       setError(errorMessage);
       setFallbackProvider(null);
 
@@ -399,7 +465,7 @@ export default function FrameworkGenerator({
     try {
       // Load selected documents
       const docs = await Promise.all(
-        selectedRefinementDocs.map(id => contextDocumentsAPI.get(id))
+        selectedDocIds.map(id => contextDocumentsAPI.get(id))
       );
       const validDocs = docs.filter((d): d is ContextDocument => d !== null);
 
@@ -418,7 +484,7 @@ export default function FrameworkGenerator({
       }
 
       // Stream refinement
-      const url = 'http://127.0.0.1:8000/chat/stream';
+      const url = 'http://127.0.0.1:8001/chat/stream';
       abortControllerRef.current = new AbortController();
 
       const response = await fetch(url, {
@@ -463,18 +529,9 @@ export default function FrameworkGenerator({
                 const event = JSON.parse(data);
                 if (event.type === 'content_block_delta' && event.delta?.text) {
                   assistantResponse += event.delta.text;
-                  // Update the last message in real-time
-                  setRefinementMessages(prev => {
-                    const newMessages = [...prev];
-                    if (newMessages[newMessages.length - 1]?.role === 'assistant') {
-                      newMessages[newMessages.length - 1].content = assistantResponse;
-                    } else {
-                      newMessages.push({ role: 'assistant', content: assistantResponse });
-                    }
-                    return newMessages;
-                  });
+                  setGeneratedContent(assistantResponse);
                 }
-              } catch (e) {
+              } catch {
                 // Ignore parse errors
               }
             }
@@ -482,8 +539,7 @@ export default function FrameworkGenerator({
         }
       }
 
-      // Update generated content with the latest refinement
-      setGeneratedContent(assistantResponse);
+      setRefinementMessages(prev => [...prev, { role: 'assistant', content: assistantResponse }]);
 
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -598,7 +654,7 @@ export default function FrameworkGenerator({
         {/* Left Panel: Context Input */}
         <div
           className="flex-shrink-0 flex flex-col border-r border-codex-border h-full"
-          style={{ width: `${leftPanelWidth}%` }}
+          style={{ width: `${leftPanelWidth}%`, overflow: 'visible' }}
         >
 
           <div className="flex-1 p-6 space-y-6 overflow-y-auto">
@@ -779,7 +835,7 @@ export default function FrameworkGenerator({
           </div>
 
           {/* Generate Button */}
-          <div className="flex-shrink-0 border-t border-codex-border p-4">
+          <div className="flex-shrink-0 border-t border-codex-border p-4" style={{ overflow: 'visible', position: 'relative', zIndex: 20 }}>
             {error && (
               <div className="mb-3">
                 <div className="px-3 py-2 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400">
@@ -893,93 +949,30 @@ export default function FrameworkGenerator({
               </div>
 
               {/* Content Area */}
-              <div ref={contentRef} className={`${showRefinementChat ? 'flex-[2]' : 'flex-1'} overflow-y-auto p-6`}>
+              <div ref={contentRef} className="flex-1 overflow-y-auto p-6">
                 <MarkdownWithMermaid content={generatedContent} />
               </div>
 
-              {/* Refinement Chat Toggle */}
-              {!showRefinementChat && !isGenerating && (
+              {/* Refinement Input Bar */}
+              {!isGenerating && (
                 <div className="flex-shrink-0 border-t border-codex-border p-3 bg-codex-surface/40">
-                  <button
-                    onClick={() => setShowRefinementChat(true)}
-                    className="w-full px-4 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 text-sm font-medium rounded transition-colors"
-                  >
-                    💬 Refine Output
-                  </button>
-                </div>
-              )}
-
-              {/* Refinement Chat Interface */}
-              {showRefinementChat && (
-                <div className="flex-1 flex flex-col border-t border-codex-border bg-codex-surface/10 min-h-0">
-                  {/* Chat Messages */}
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                    {refinementMessages.map((msg, idx) => (
-                      <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] px-4 py-2 rounded-lg text-sm ${
-                          msg.role === 'user'
-                            ? 'bg-indigo-600 text-codex-text-primary'
-                            : 'bg-codex-surface text-slate-200'
-                        }`}>
-                          {msg.content}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Chat Input */}
-                  <div className="flex-shrink-0 p-4 border-t border-codex-border">
-                    {/* Document Selection */}
-                    <div className="mb-2 flex gap-2 flex-wrap">
-                      {availableDocs.map(doc => (
-                        <button
-                          key={doc.id}
-                          onClick={() => {
-                            if (selectedRefinementDocs.includes(doc.id)) {
-                              setSelectedRefinementDocs(prev => prev.filter(id => id !== doc.id));
-                            } else {
-                              setSelectedRefinementDocs(prev => [...prev, doc.id]);
-                            }
-                          }}
-                          className={`px-2 py-1 text-xs rounded transition-colors ${
-                            selectedRefinementDocs.includes(doc.id)
-                              ? 'bg-indigo-600 text-codex-text-primary'
-                              : 'bg-codex-surface text-codex-text-secondary hover:bg-slate-600'
-                          }`}
-                        >
-                          📄 {doc.name}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={refinementInput}
-                        onChange={(e) => setRefinementInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && !isRefining && handleRefinement()}
-                        placeholder="Ask for changes or clarifications..."
-                        disabled={isRefining}
-                        className="flex-1 px-3 py-2 bg-codex-surface border border-codex-border rounded text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-2 focus:ring-codex-accent disabled:opacity-50"
-                      />
-                      <button
-                        onClick={handleRefinement}
-                        disabled={isRefining || !refinementInput.trim()}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-codex-surface disabled:cursor-not-allowed text-codex-text-primary text-sm font-medium rounded transition-colors"
-                      >
-                        {isRefining ? '...' : 'Send'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowRefinementChat(false);
-                          setRefinementMessages([]);
-                          setRefinementInput('');
-                        }}
-                        className="px-3 py-2 bg-codex-surface hover:bg-slate-600 text-codex-text-primary text-sm rounded transition-colors"
-                      >
-                        ✕
-                      </button>
-                    </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={refinementInput}
+                      onChange={(e) => setRefinementInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && !isRefining && handleRefinement()}
+                      placeholder="Refine: ask for changes or clarifications..."
+                      disabled={isRefining}
+                      className="flex-1 px-3 py-2 bg-codex-surface border border-codex-border rounded text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-2 focus:ring-codex-accent disabled:opacity-50"
+                    />
+                    <button
+                      onClick={handleRefinement}
+                      disabled={isRefining || !refinementInput.trim()}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-codex-surface disabled:cursor-not-allowed text-codex-text-primary text-sm font-medium rounded transition-colors"
+                    >
+                      {isRefining ? '...' : 'Refine'}
+                    </button>
                   </div>
                 </div>
               )}

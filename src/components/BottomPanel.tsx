@@ -1,22 +1,20 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import TerminalView from './TerminalView';
+import { useState, useRef, useEffect } from 'react';
+import TerminalTabs from './TerminalTabs';
+import { onError, getBufferedErrors, clearBufferedErrors } from '../lib/errorBus';
 
 interface BottomPanelProps {
   height: number;
   projectId: string | null;
   onClose: () => void;
+  initialTab?: PanelTab;
 }
 
-type PanelTab = 'terminal' | 'output' | 'errors';
+type PanelTab = 'terminal' | 'errors';
 
-export default function BottomPanel({ height, projectId, onClose }: BottomPanelProps) {
-  const [activeTab, setActiveTab] = useState<PanelTab>('terminal');
+export default function BottomPanel({ height, projectId, onClose, initialTab }: BottomPanelProps) {
+  const [activeTab, setActiveTab] = useState<PanelTab>(initialTab || 'terminal');
   const [errors, setErrors] = useState<string[]>([]);
   const errorsRef = useRef<HTMLDivElement>(null);
-
-  const handleError = useCallback((error: string) => {
-    setErrors(prev => [...prev, error]);
-  }, []);
 
   useEffect(() => {
     const origError = console.error;
@@ -53,6 +51,22 @@ export default function BottomPanel({ height, projectId, onClose }: BottomPanelP
   }, []);
 
   useEffect(() => {
+    const buffered = getBufferedErrors();
+    if (buffered.length > 0) {
+      setErrors(prev => [...prev, ...buffered]);
+      clearBufferedErrors();
+    }
+    const unsub = onError((msg) => {
+      setErrors(prev => [...prev, msg]);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
     if (errorsRef.current && activeTab === 'errors') {
       errorsRef.current.scrollTop = errorsRef.current.scrollHeight;
     }
@@ -77,40 +91,29 @@ export default function BottomPanel({ height, projectId, onClose }: BottomPanelP
           backgroundColor: '#010409',
         }}
       >
-        <button
-          onClick={() => setActiveTab('terminal')}
-          className="px-2.5 py-1 text-xs rounded transition-colors"
-          style={tabStyle('terminal')}
-        >
-          Terminal
-        </button>
-        <button
-          onClick={() => setActiveTab('output')}
-          className="px-2.5 py-1 text-xs rounded transition-colors"
-          style={tabStyle('output')}
-        >
-          Output
-        </button>
-        <button
-          onClick={() => setActiveTab('errors')}
-          className="px-2.5 py-1 text-xs rounded transition-colors flex items-center gap-1.5"
-          style={tabStyle('errors')}
-        >
-          Errors
-          {errors.length > 0 && (
-            <span
-              className="px-1.5 py-0.5 rounded-full text-[10px] font-medium"
-              style={{ backgroundColor: '#f8514930', color: '#f85149', minWidth: '18px', textAlign: 'center' }}
-            >
-              {errors.length}
-            </span>
-          )}
-        </button>
+        {(['terminal', 'errors'] as PanelTab[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className="px-2.5 py-1 text-xs rounded transition-all duration-150 hover:bg-white/[0.06] active:bg-white/[0.1] active:scale-[0.96] flex items-center gap-1.5"
+            style={tabStyle(tab)}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === 'errors' && errors.length > 0 && (
+              <span
+                className="px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+                style={{ backgroundColor: '#f8514930', color: '#f85149', minWidth: '18px', textAlign: 'center' }}
+              >
+                {errors.length}
+              </span>
+            )}
+          </button>
+        ))}
         <div className="flex-1" />
         {activeTab === 'errors' && errors.length > 0 && (
           <button
-            onClick={() => setErrors([])}
-            className="px-2 py-0.5 text-xs rounded transition-colors"
+            onClick={() => { setErrors([]); clearBufferedErrors(); }}
+            className="px-2 py-0.5 text-xs rounded transition-all duration-150 hover:bg-white/[0.06] active:bg-white/[0.1] active:scale-95"
             style={{ color: '#484f58', fontSize: '11px' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#c9d1d9')}
             onMouseLeave={e => (e.currentTarget.style.color = '#484f58')}
@@ -120,7 +123,7 @@ export default function BottomPanel({ height, projectId, onClose }: BottomPanelP
         )}
         <button
           onClick={onClose}
-          className="p-0.5 transition-colors"
+          className="p-1 rounded transition-all duration-150 hover:bg-white/[0.06] active:bg-white/[0.1] active:scale-90"
           style={{ color: '#484f58' }}
           title="Close panel (⌘`)"
           onMouseEnter={e => (e.currentTarget.style.color = '#c9d1d9')}
@@ -133,7 +136,7 @@ export default function BottomPanel({ height, projectId, onClose }: BottomPanelP
       </div>
       <div className="flex-1 overflow-hidden">
         {activeTab === 'terminal' ? (
-          <TerminalView projectId={projectId} onError={handleError} />
+          <TerminalTabs projectId={projectId} />
         ) : activeTab === 'errors' ? (
           <div
             ref={errorsRef}
@@ -170,11 +173,7 @@ export default function BottomPanel({ height, projectId, onClose }: BottomPanelP
               })
             )}
           </div>
-        ) : (
-          <div className="flex-1 flex items-center justify-center h-full" style={{ backgroundColor: '#0d1117' }}>
-            <span style={{ color: '#484f58', fontSize: '12px' }}>No output to display</span>
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

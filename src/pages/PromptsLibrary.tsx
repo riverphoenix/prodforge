@@ -24,9 +24,10 @@ type SortOption = 'most-used' | 'recent' | 'alpha' | 'favorites';
 
 interface PromptsLibraryProps {
   projectId: string;
+  onUsePrompt?: (promptText: string) => void;
 }
 
-export default function PromptsLibrary({ projectId: _projectId }: PromptsLibraryProps) {
+export default function PromptsLibrary({ projectId: _projectId, onUsePrompt }: PromptsLibraryProps) {
   const [prompts, setPrompts] = useState<SavedPrompt[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,6 +36,8 @@ export default function PromptsLibrary({ projectId: _projectId }: PromptsLibrary
   const [searchResults, setSearchResults] = useState<SavedPrompt[] | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<SavedPrompt | null>(null);
   const [showEditor, setShowEditor] = useState(false);
+  const [variablePrompt, setVariablePrompt] = useState<SavedPrompt | null>(null);
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [showBatchExport, setShowBatchExport] = useState(false);
   const [showBatchImport, setShowBatchImport] = useState(false);
@@ -307,7 +310,20 @@ export default function PromptsLibrary({ projectId: _projectId }: PromptsLibrary
             {filteredPrompts.map(prompt => (
               <div
                 key={prompt.id}
-                className="bg-codex-surface/60 border border-codex-border rounded-lg p-4 hover:bg-codex-surface-hover hover:border-codex-accent/50 transition-all duration-200 group"
+                onClick={async () => {
+                  if (onUsePrompt) {
+                    if (prompt.variables.length > 0) {
+                      const vals: Record<string, string> = {};
+                      prompt.variables.forEach(v => { vals[v.name] = ''; });
+                      setVariableValues(vals);
+                      setVariablePrompt(prompt);
+                    } else {
+                      try { await savedPromptsAPI.incrementUsage(prompt.id); } catch {}
+                      onUsePrompt(prompt.prompt_text);
+                    }
+                  }
+                }}
+                className="bg-codex-surface/60 border border-codex-border rounded-lg p-4 hover:bg-codex-surface-hover hover:border-codex-accent/50 transition-all duration-200 group cursor-pointer"
               >
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="text-sm font-semibold text-codex-text-primary group-hover:text-codex-accent transition-colors flex-1 mr-2">
@@ -347,26 +363,26 @@ export default function PromptsLibrary({ projectId: _projectId }: PromptsLibrary
                   </span>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => { setEditingPrompt(prompt); setShowEditor(true); }}
+                      onClick={(e) => { e.stopPropagation(); setEditingPrompt(prompt); setShowEditor(true); }}
                       className="text-[10px] px-2 py-1 text-codex-text-secondary hover:text-codex-text-primary"
                     >
                       Edit
                     </button>
                     <button
-                      onClick={() => handleDuplicate(prompt)}
+                      onClick={(e) => { e.stopPropagation(); handleDuplicate(prompt); }}
                       className="text-[10px] px-2 py-1 text-codex-text-secondary hover:text-codex-text-primary"
                     >
                       Duplicate
                     </button>
                     <button
-                      onClick={() => handleExportSingle(prompt)}
+                      onClick={(e) => { e.stopPropagation(); handleExportSingle(prompt); }}
                       className="text-[10px] px-2 py-1 text-codex-text-secondary hover:text-codex-text-primary"
                     >
                       Export
                     </button>
                     {!prompt.is_builtin && (
                       <button
-                        onClick={() => handleDelete(prompt)}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(prompt); }}
                         className="text-[10px] px-2 py-1 text-red-400 hover:text-red-300"
                       >
                         Delete
@@ -421,6 +437,75 @@ export default function PromptsLibrary({ projectId: _projectId }: PromptsLibrary
           onClose={() => setShowBatchImport(false)}
           onDone={() => { loadPrompts(); }}
         />
+      )}
+
+      {variablePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          <div className="w-full max-w-lg rounded-lg border border-codex-border shadow-2xl" style={{ backgroundColor: '#1e1e2e' }}>
+            <div className="px-5 pt-5 pb-3 border-b border-codex-border/50">
+              <h3 className="text-sm font-semibold text-codex-text-primary">{variablePrompt.name}</h3>
+              <p className="text-[10px] text-codex-text-muted mt-1">Fill in the variables below, then send to chat.</p>
+            </div>
+            <div className="px-5 py-4 space-y-3 max-h-80 overflow-y-auto">
+              {variablePrompt.variables.map(v => (
+                <div key={v.name}>
+                  <label className="block text-xs text-codex-text-secondary mb-1">
+                    {v.label || v.name}
+                  </label>
+                  {v.type === 'select' && v.options ? (
+                    <select
+                      value={variableValues[v.name] || ''}
+                      onChange={(e) => setVariableValues(prev => ({ ...prev, [v.name]: e.target.value }))}
+                      className="w-full px-3 py-2 bg-codex-surface border border-codex-border rounded text-sm text-codex-text-primary focus:outline-none focus:ring-1 focus:ring-codex-accent"
+                    >
+                      <option value="">Select...</option>
+                      {v.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  ) : v.type === 'textarea' ? (
+                    <textarea
+                      value={variableValues[v.name] || ''}
+                      onChange={(e) => setVariableValues(prev => ({ ...prev, [v.name]: e.target.value }))}
+                      placeholder={v.placeholder || `Enter ${v.label || v.name}...`}
+                      rows={3}
+                      className="w-full px-3 py-2 bg-codex-surface border border-codex-border rounded text-sm text-codex-text-primary placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent resize-none"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={variableValues[v.name] || ''}
+                      onChange={(e) => setVariableValues(prev => ({ ...prev, [v.name]: e.target.value }))}
+                      placeholder={v.placeholder || `Enter ${v.label || v.name}...`}
+                      className="w-full px-3 py-2 bg-codex-surface border border-codex-border rounded text-sm text-codex-text-primary placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-codex-border/50">
+              <button
+                onClick={() => { setVariablePrompt(null); setVariableValues({}); }}
+                className="px-3 py-1.5 text-xs text-codex-text-secondary hover:text-codex-text-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  let text = variablePrompt.prompt_text;
+                  for (const [key, val] of Object.entries(variableValues)) {
+                    text = text.split(`{${key}}`).join(val || `[${key}]`);
+                  }
+                  try { await savedPromptsAPI.incrementUsage(variablePrompt.id); } catch {}
+                  onUsePrompt?.(text);
+                  setVariablePrompt(null);
+                  setVariableValues({});
+                }}
+                className="px-4 py-1.5 text-xs text-white bg-codex-accent hover:bg-codex-accent/80 rounded transition-colors"
+              >
+                Send to Chat
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {error && (

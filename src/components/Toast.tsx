@@ -77,32 +77,34 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
-        {toasts.map(toast => (
-          <div
-            key={toast.id}
-            className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg backdrop-blur-sm transition-all duration-300 ${typeStyles[toast.type]} ${
-              toast.exiting ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'
-            }`}
-            style={{ animation: toast.exiting ? undefined : 'slideUp 0.3s ease-out' }}
-          >
-            <span className={`text-sm ${typeTextColors[toast.type]}`}>{typeIcons[toast.type]}</span>
-            <span className="text-sm text-codex-text-primary flex-1">{toast.message}</span>
-            <button
-              onClick={() => dismiss(toast.id)}
-              className="text-codex-text-muted hover:text-codex-text-primary text-xs ml-2"
+      {toasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+          <style>{`
+            @keyframes toast-slideUp {
+              from { opacity: 0; transform: translateY(16px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
+          {toasts.map(toast => (
+            <div
+              key={toast.id}
+              className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg backdrop-blur-sm transition-all duration-300 ${typeStyles[toast.type]} ${
+                toast.exiting ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'
+              }`}
+              style={{ animation: toast.exiting ? undefined : 'toast-slideUp 0.3s ease-out' }}
             >
-              \u2715
-            </button>
-          </div>
-        ))}
-      </div>
-      <style>{`
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(16px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+              <span className={`text-sm ${typeTextColors[toast.type]}`}>{typeIcons[toast.type]}</span>
+              <span className="text-sm text-codex-text-primary flex-1">{toast.message}</span>
+              <button
+                onClick={() => dismiss(toast.id)}
+                className="text-codex-text-muted hover:text-codex-text-primary text-xs ml-2"
+              >
+                {'\u2715'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </ToastContext.Provider>
   );
 }

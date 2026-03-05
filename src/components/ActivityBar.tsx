@@ -1,34 +1,36 @@
 import { useState } from 'react';
 
-type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'workflows' | 'editor';
+type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor';
 
 interface ActivityBarProps {
   activeTab: Tab;
   onToggleThreads: () => void;
   onToggleTerminal: () => void;
-  onToggleInsights: () => void;
+  onToggleChat: () => void;
+  onToggleEditor: () => void;
   onSettingsClick: () => void;
   onHomeClick: () => void;
   threadsOpen: boolean;
   terminalActive: boolean;
-  insightsOpen: boolean;
+  chatActive: boolean;
+  editorActive: boolean;
   isSettings: boolean;
   isHome: boolean;
-  hasProject: boolean;
 }
 
 export default function ActivityBar({
   onToggleThreads,
   onToggleTerminal,
-  onToggleInsights,
+  onToggleChat,
+  onToggleEditor,
   onSettingsClick,
   onHomeClick,
   threadsOpen,
   terminalActive,
-  insightsOpen,
+  chatActive,
+  editorActive,
   isSettings,
   isHome,
-  hasProject,
 }: ActivityBarProps) {
   const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
 
@@ -47,10 +49,10 @@ export default function ActivityBar({
         onClick={onClick}
         onMouseEnter={() => setHoveredIcon(id)}
         onMouseLeave={() => setHoveredIcon(null)}
-        className={`w-10 h-10 flex items-center justify-center rounded-md transition-colors ${
+        className={`w-10 h-10 flex items-center justify-center rounded-md transition-all duration-150 ${
           active
-            ? 'text-codex-text-primary'
-            : 'text-codex-text-muted hover:text-codex-text-primary'
+            ? 'text-codex-text-primary bg-white/[0.08]'
+            : 'text-codex-text-muted hover:text-codex-text-primary hover:bg-white/[0.06] active:bg-white/[0.12] active:scale-[0.92]'
         }`}
         title={title}
       >
@@ -91,19 +93,25 @@ export default function ActivityBar({
           </svg>
         </IconButton>
 
+        <IconButton id="chat" title="Chat" active={chatActive} onClick={onToggleChat}>
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+          </svg>
+        </IconButton>
+
+        <IconButton id="editor" title="Editor" active={editorActive} onClick={onToggleEditor}>
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+          </svg>
+        </IconButton>
+
         <IconButton id="terminal" title="Terminal" active={terminalActive} onClick={onToggleTerminal}>
           <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
         </IconButton>
 
-        {hasProject && (
-          <IconButton id="insights" title="AI Insights" active={insightsOpen} onClick={onToggleInsights}>
-            <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
-            </svg>
-          </IconButton>
-        )}
+
       </div>
 
       {/* Spacer */}

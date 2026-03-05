@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "PMKit",
+  "productName": "ProdForge",
   "version": "1.0.0",
-  "identifier": "com.dsotiriou.pmkit",
+  "identifier": "com.dsotiriou.prodforge",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "PMKit",
+        "title": "ProdForge",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
@@ -43,6 +43,6 @@
     },
     "category": "DeveloperTool",
     "shortDescription": "AI-powered Product Management toolkit",
-    "longDescription": "PMKit is an AI-powered desktop toolkit for Product Managers. Generate frameworks, manage documents, run workflows, and chat with AI models from OpenAI, Anthropic, Google, and Ollama."
+    "longDescription": "ProdForge is an AI-powered desktop toolkit for Product Managers. Generate frameworks, manage documents, run workflows, and chat with AI models from OpenAI, Anthropic, Google, and Ollama."
   }
 }

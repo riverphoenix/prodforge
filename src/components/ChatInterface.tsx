@@ -3,16 +3,18 @@ import { Message, ChatStreamEvent, Settings, ContextDocument, LLMProvider } from
 import { conversationsAPI, messagesAPI, tokenUsageAPI, contextDocumentsAPI, settingsAPI } from '../lib/ipc';
 import MarkdownRenderer from './MarkdownRenderer';
 import ModelSelector from './ModelSelector';
+import { emitError } from '../lib/errorBus';
 
 interface ChatInterfaceProps {
   projectId: string;
   conversationId?: string;
   apiKey: string;
   settings: Settings;
-  model?: string;
-  onModelChange?: (model: string) => void;
   initialMessage?: string | null;
   onInitialMessageConsumed?: () => void;
+  activeDocumentContext?: { type: string; name: string; content: string } | null;
+  initialProvider?: LLMProvider;
+  initialModel?: string;
 }
 
 interface MessageWithContext extends Message {
@@ -25,10 +27,11 @@ export default function ChatInterface({
   conversationId: initialConversationId,
   apiKey,
   settings,
-  model: _model = 'gpt-5',
-  onModelChange,
   initialMessage,
   onInitialMessageConsumed,
+  activeDocumentContext,
+  initialProvider,
+  initialModel,
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<MessageWithContext[]>([]);
   const [input, setInput] = useState('');
@@ -40,8 +43,8 @@ export default function ChatInterface({
   const [error, setError] = useState<string | null>(null);
   const [fallbackProvider, setFallbackProvider] = useState<LLMProvider | null>(null);
   const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(new Set());
-  const [selectedProvider, setSelectedProvider] = useState<LLMProvider>('openai');
-  const [selectedModel, setSelectedModel] = useState('gpt-5');
+  const [selectedProvider, setSelectedProvider] = useState<LLMProvider>(initialProvider || 'openai');
+  const [selectedModel, setSelectedModel] = useState(initialModel || 'gpt-5');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Context attachment state
@@ -70,15 +73,8 @@ export default function ChatInterface({
     scrollToBottom();
   }, [messages, streamingMessage]);
 
-  // Notify parent component when model changes
   useEffect(() => {
-    if (onModelChange) {
-      onModelChange(selectedModel);
-    }
-  }, [selectedModel, onModelChange]);
-
-  // Fetch available models when API key is available
-  useEffect(() => {
+    if (initialProvider) return;
     const loadDefaultProvider = async () => {
       try {
         const s = await settingsAPI.get();
@@ -167,6 +163,15 @@ export default function ChatInterface({
       parts.push(`\nAbout their role:\n${settings.about_role}`);
     }
 
+    if (activeDocumentContext) {
+      parts.push(`\nThe user is currently viewing a ${activeDocumentContext.type} named "${activeDocumentContext.name}". Here is its content for reference:\n\n---\n${activeDocumentContext.content.slice(0, 8000)}\n---\n`);
+      parts.push('You can reference this document in your responses when relevant.');
+    }
+
+    if (settings.global_context) {
+      parts.push(`\n${settings.global_context}`);
+    }
+
     parts.push(
       '\nProvide concise, actionable advice tailored to their role. Use PM frameworks and best practices when relevant.'
     );
@@ -223,7 +228,7 @@ export default function ChatInterface({
       if (urlInput.trim()) {
         try {
           console.log('🔗 Fetching URL:', urlInput.trim());
-          const response = await fetch('http://127.0.0.1:8000/fetch-url', {
+          const response = await fetch('http://127.0.0.1:8001/fetch-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: urlInput.trim() }),
@@ -300,13 +305,13 @@ export default function ChatInterface({
 
       // Call Python sidecar streaming endpoint
       console.log('Sending request to Python sidecar:', {
-        url: 'http://localhost:8000/chat/stream',
+        url: 'http://127.0.0.1:8001/chat/stream',
         model: selectedModel,
         messageCount: chatMessages.length,
         hasApiKey: !!apiKey,
       });
 
-      const response = await fetch('http://localhost:8000/chat/stream', {
+      const response = await fetch('http://127.0.0.1:8001/chat/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -409,7 +414,7 @@ export default function ChatInterface({
       console.error('Failed to send message:', error);
       let errorMessage: string;
 
-      if (error instanceof TypeError && (error.message.includes('fetch') || error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
+      if (error instanceof TypeError && (error.message.includes('fetch') || error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('Load failed'))) {
         errorMessage = 'Cannot connect to AI server. Please ensure the Python sidecar is running (cd python-sidecar && python main.py).';
       } else if (error instanceof Error) {
         errorMessage = error.message;
@@ -424,6 +429,7 @@ export default function ChatInterface({
       }
 
       setError(errorMessage);
+      emitError(errorMessage);
       setFallbackProvider(null);
 
       try {

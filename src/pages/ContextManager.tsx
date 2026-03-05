@@ -15,7 +15,6 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
   const [newDocType, setNewDocType] = useState<'text' | 'url' | 'pdf' | 'google_doc'>('text');
   const [newDocContent, setNewDocContent] = useState('');
   const [newDocUrl, setNewDocUrl] = useState('');
-  const [newDocIsGlobal, setNewDocIsGlobal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFetching, setIsFetching] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
@@ -48,7 +47,7 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
     setError(null);
 
     try {
-      const url = `http://127.0.0.1:8000/parse-url?url=${encodeURIComponent(newDocUrl)}`;
+      const url = `http://127.0.0.1:8001/parse-url?url=${encodeURIComponent(newDocUrl)}`;
       console.log('Calling:', url);
 
       const response = await fetch(url, {
@@ -114,7 +113,7 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
       const bytes = new Uint8Array(arrayBuffer);
       console.log('📤 Sending PDF to parser, size:', bytes.length);
 
-      const response = await fetch('http://127.0.0.1:8000/parse-pdf', {
+      const response = await fetch('http://127.0.0.1:8001/parse-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/pdf' },
         body: bytes
@@ -183,14 +182,13 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
         newDocType,
         newDocContent,
         newDocType === 'url' ? newDocUrl : undefined,
-        newDocIsGlobal
+        false
       );
 
       // Reset form
       setNewDocName('');
       setNewDocContent('');
       setNewDocUrl('');
-      setNewDocIsGlobal(false);
       setShowAddDialog(false);
       setError(null);
 
@@ -202,15 +200,6 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
     }
   };
 
-  const handleToggleGlobal = async (doc: ContextDocument) => {
-    try {
-      await contextDocumentsAPI.update(doc.id, doc.name, !doc.is_global);
-      await loadDocuments();
-    } catch (err) {
-      console.error('Failed to update document:', err);
-      setError('Failed to update document');
-    }
-  };
 
   const handleDeleteDocument = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -237,7 +226,6 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
   };
 
   const totalSize = documents.reduce((sum, doc) => sum + doc.size_bytes, 0);
-  const globalDocs = documents.filter(d => d.is_global);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }} className="bg-codex-bg">
@@ -265,10 +253,6 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
           <div className="flex items-center gap-2">
             <span className="text-codex-text-muted">Total:</span>
             <span className="text-codex-text-primary">{documents.length} documents</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-codex-text-muted">Global:</span>
-            <span className="text-codex-accent">{globalDocs.length} documents</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-codex-text-muted">Size:</span>
@@ -323,11 +307,6 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
                       <h3 className="text-sm font-semibold text-codex-text-primary truncate">
                         {doc.name}
                       </h3>
-                      {doc.is_global && (
-                        <span className="text-[10px] px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded flex-shrink-0">
-                          Global Context
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-center gap-3 text-xs text-codex-text-muted">
                       <span className="capitalize">{doc.type}</span>
@@ -343,17 +322,6 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                    <button
-                      onClick={() => handleToggleGlobal(doc)}
-                      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        doc.is_global
-                          ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30'
-                          : 'bg-codex-surface text-codex-text-secondary hover:bg-slate-600 hover:text-codex-text-primary'
-                      }`}
-                      title={doc.is_global ? 'Remove from global context' : 'Add to global context'}
-                    >
-                      {doc.is_global ? '★ Global' : '☆ Make Global'}
-                    </button>
                     <button
                       onClick={(e) => handleDeleteDocument(doc.id, e)}
                       className="px-3 py-1 text-xs text-red-400 hover:text-red-300 transition-colors"
@@ -378,8 +346,8 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
 
       {/* Add Document Dialog */}
       {showAddDialog && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
-          <div className="bg-codex-surface border border-codex-border rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6">
+          <div className="border border-codex-border rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto" style={{ backgroundColor: '#1e1e2e' }}>
             <h3 className="text-lg font-semibold text-codex-text-primary mb-4">Add Context Document</h3>
 
             <div className="space-y-4">
@@ -511,23 +479,6 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
                 </div>
               </div>
 
-              {/* Global Context Checkbox */}
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={newDocIsGlobal}
-                  onChange={(e) => setNewDocIsGlobal(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <div>
-                  <div className="text-sm text-codex-text-primary">
-                    Add to global context
-                  </div>
-                  <div className="text-[10px] text-codex-text-muted mt-0.5">
-                    This document will be automatically included in all framework generations
-                  </div>
-                </div>
-              </label>
             </div>
 
             {error && (
