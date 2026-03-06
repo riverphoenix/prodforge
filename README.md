@@ -58,6 +58,13 @@ ProdForge is a native desktop app that combines AI-driven frameworks, autonomous
 
 Grab the latest `.dmg` from the [Releases page](https://github.com/riverphoenix/prodforge/releases/latest). Open the DMG, drag ProdForge to Applications, and launch.
 
+**Important — macOS Gatekeeper:** Since ProdForge is not notarized with an Apple Developer certificate, macOS will block the first launch. To bypass:
+
+1. Open the DMG and drag ProdForge to Applications
+2. **Right-click** (or Control-click) on ProdForge in Applications and select **Open**
+3. Click **Open** in the dialog that appears
+4. Alternatively, run: `xattr -cr /Applications/ProdForge.app` in Terminal before launching
+
 ### Build from Source
 
 **Prerequisites:**

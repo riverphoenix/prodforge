@@ -97,7 +97,7 @@ export default function ActivityBar({
       {hoveredIcon === id && (
         <div
           className="absolute left-12 border border-codex-border px-2 py-1 rounded text-[10px] text-codex-text-primary whitespace-nowrap z-50 shadow-lg pointer-events-none"
-          style={{ backgroundColor: '#3c3c3c' }}
+          style={{ backgroundColor: 'var(--color-codex-surface-hover, #37373d)' }}
         >
           {title}
         </div>
@@ -107,8 +107,8 @@ export default function ActivityBar({
 
   return (
     <div
-      className="flex flex-col items-center flex-shrink-0 border-r border-codex-border"
-      style={{ width: '48px', backgroundColor: '#181818' }}
+      className="flex flex-col items-center flex-shrink-0 border-r border-codex-border bg-codex-sidebar"
+      style={{ width: '48px' }}
     >
       {/* Top icons */}
       <div className="flex flex-col items-center gap-0.5 pt-1">

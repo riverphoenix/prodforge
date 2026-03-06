@@ -67,15 +67,15 @@ export default function TerminalTabs({ projectId }: TerminalTabsProps) {
   }, []);
 
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: '#1e1e1e' }}>
+    <div className="flex flex-col h-full bg-codex-bg">
       <div className="flex items-center gap-0 border-b border-codex-border/30 flex-shrink-0" style={{ height: '28px' }}>
         {tabs.map(tab => (
           <div
             key={tab.id}
             className={`flex items-center gap-1.5 px-3 h-full cursor-pointer text-[11px] border-r border-codex-border/20 ${
               tab.id === activeTabId
-                ? 'text-codex-text-primary bg-[#1e1e1e]'
-                : 'text-codex-text-muted bg-[#181818] hover:bg-[#1e1e1e]'
+                ? 'text-codex-text-primary bg-codex-bg'
+                : 'text-codex-text-muted bg-codex-sidebar hover:bg-codex-bg'
             }`}
             onClick={() => setActiveTabId(tab.id)}
           >

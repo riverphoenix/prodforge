@@ -150,7 +150,7 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
 
   if (!projectId && !cwd) {
     return (
-      <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: '#1e1e1e' }}>
+      <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: 'var(--color-codex-bg, #1e1e1e)' }}>
         <span className="text-xs" style={{ color: '#484f58' }}>Select a project to use the terminal</span>
       </div>
     );
@@ -160,7 +160,7 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
     <div
       ref={terminalRef}
       className="h-full w-full"
-      style={{ backgroundColor: '#1e1e1e', padding: '4px' }}
+      style={{ backgroundColor: 'var(--color-codex-bg, #1e1e1e)', padding: '4px' }}
     />
   );
 }
