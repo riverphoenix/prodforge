@@ -27,6 +27,7 @@ impl PtyManager {
         cols: u16,
         rows: u16,
         cwd: &str,
+        command: Option<&str>,
         app: AppHandle,
     ) -> Result<(), String> {
         let pty_system = native_pty_system();
@@ -40,25 +41,34 @@ impl PtyManager {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
+        let user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-        let mut cmd = CommandBuilder::new(&shell);
-        cmd.arg("-l");
+        let (program, args): (String, Vec<String>) = if let Some(command) = command {
+            let parts: Vec<&str> = command.split_whitespace().collect();
+            let prog = parts[0].to_string();
+            let cmd_args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
+            (prog, cmd_args)
+        } else {
+            ("/usr/bin/login".to_string(), vec![
+                "-fpl".to_string(),
+                user,
+                shell,
+                "-l".to_string(),
+            ])
+        };
+        let mut cmd = CommandBuilder::new(&program);
+        for arg in &args {
+            cmd.arg(arg);
+        }
         cmd.cwd(cwd);
 
+        for (key, _) in std::env::vars() {
+            if key.starts_with("CLAUDE") || key == "ANTHROPIC_INSIDE_CLAUDE" {
+                cmd.env_remove(key);
+            }
+        }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
-        if let Ok(path) = std::env::var("PATH") {
-            cmd.env("PATH", path);
-        }
-        if let Ok(home) = std::env::var("HOME") {
-            cmd.env("HOME", home);
-        }
-        if let Ok(user) = std::env::var("USER") {
-            cmd.env("USER", user);
-        }
-        if let Ok(lang) = std::env::var("LANG") {
-            cmd.env("LANG", lang);
-        }
 
         let child = pair
             .slave
@@ -80,12 +90,25 @@ impl PtyManager {
 
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
+            let mut pending = Vec::new();
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
-                        let data = String::from_utf8_lossy(&buf[..n]).to_string();
-                        let _ = app.emit(&event_name, data);
+                        pending.extend_from_slice(&buf[..n]);
+                        let valid_up_to = match std::str::from_utf8(&pending) {
+                            Ok(s) => {
+                                let _ = app.emit(&event_name, s.to_string());
+                                pending.clear();
+                                continue;
+                            }
+                            Err(e) => e.valid_up_to(),
+                        };
+                        if valid_up_to > 0 {
+                            let valid = std::str::from_utf8(&pending[..valid_up_to]).unwrap();
+                            let _ = app.emit(&event_name, valid.to_string());
+                        }
+                        pending.drain(..valid_up_to);
                     }
                     Err(_) => break,
                 }

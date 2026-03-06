@@ -36,7 +36,7 @@ export default function PromptEditor({
         'editor.foreground': '#e6edf3',
         'editor.lineHighlightBackground': '#161b22',
         'editor.selectionBackground': '#264f78',
-        'editorCursor.foreground': '#007acc',
+        'editorCursor.foreground': '#8B5CF6',
         'editor.inactiveSelectionBackground': '#264f7840',
         'editorLineNumber.foreground': '#484f58',
         'editorLineNumber.activeForeground': '#858585',

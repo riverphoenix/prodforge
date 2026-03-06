@@ -1,13 +1,18 @@
 import { useState } from 'react';
 
-type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'schedules';
+type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'schedules' | 'claude';
 
 interface ActivityBarProps {
   activeTab: Tab;
   onToggleThreads: () => void;
   onToggleTerminal: () => void;
+  onToggleClaude: () => void;
   onToggleChat: () => void;
   onToggleEditor: () => void;
+  onToggleFrameworks: () => void;
+  onTogglePrompts: () => void;
+  onToggleContext: () => void;
+  onToggleOutputs: () => void;
   onToggleSkills: () => void;
   onToggleAgents: () => void;
   onToggleTeams: () => void;
@@ -16,8 +21,13 @@ interface ActivityBarProps {
   onHomeClick: () => void;
   threadsOpen: boolean;
   terminalActive: boolean;
+  claudeActive: boolean;
   chatActive: boolean;
   editorActive: boolean;
+  frameworksActive: boolean;
+  promptsActive: boolean;
+  contextActive: boolean;
+  outputsActive: boolean;
   skillsActive: boolean;
   agentsActive: boolean;
   teamsActive: boolean;
@@ -29,8 +39,13 @@ interface ActivityBarProps {
 export default function ActivityBar({
   onToggleThreads,
   onToggleTerminal,
+  onToggleClaude,
   onToggleChat,
   onToggleEditor,
+  onToggleFrameworks,
+  onTogglePrompts,
+  onToggleContext,
+  onToggleOutputs,
   onToggleSkills,
   onToggleAgents,
   onToggleTeams,
@@ -39,8 +54,13 @@ export default function ActivityBar({
   onHomeClick,
   threadsOpen,
   terminalActive,
+  claudeActive,
   chatActive,
   editorActive,
+  frameworksActive,
+  promptsActive,
+  contextActive,
+  outputsActive,
   skillsActive,
   agentsActive,
   teamsActive,
@@ -118,6 +138,36 @@ export default function ActivityBar({
         <IconButton id="editor" title="Editor" active={editorActive} onClick={onToggleEditor}>
           <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+          </svg>
+        </IconButton>
+
+        <IconButton id="frameworks" title="Frameworks" active={frameworksActive} onClick={onToggleFrameworks}>
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+          </svg>
+        </IconButton>
+
+        <IconButton id="prompts" title="Prompts" active={promptsActive} onClick={onTogglePrompts}>
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
+        </IconButton>
+
+        <IconButton id="context" title="Context" active={contextActive} onClick={onToggleContext}>
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+          </svg>
+        </IconButton>
+
+        <IconButton id="outputs" title="Outputs" active={outputsActive} onClick={onToggleOutputs}>
+          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
+          </svg>
+        </IconButton>
+
+        <IconButton id="claude" title="Claude" active={claudeActive} onClick={onToggleClaude}>
+          <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M13.83 1.5h3.84L24 22.5h-3.84l-6.33-21zm-7.5 0H2.49L8.82 22.5h3.84L6.33 1.5z"/>
           </svg>
         </IconButton>
 

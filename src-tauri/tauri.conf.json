@@ -16,7 +16,8 @@
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
-        "minHeight": 768
+        "minHeight": 768,
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {
@@ -34,6 +35,7 @@
       "icons/icon.ico"
     ],
     "macOS": {
+      "entitlements": "Entitlements.plist",
       "minimumSystemVersion": "10.15",
       "dmg": {
         "appPosition": { "x": 180, "y": 170 },

@@ -9,11 +9,12 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 interface TerminalViewProps {
   projectId: string | null;
   cwd?: string;
+  command?: string;
   sessionId?: string;
   onSessionCreated?: (sessionId: string) => void;
 }
 
-export default function TerminalView({ projectId, cwd, sessionId: externalSessionId, onSessionCreated }: TerminalViewProps) {
+export default function TerminalView({ projectId, cwd, command, sessionId: externalSessionId, onSessionCreated }: TerminalViewProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -76,7 +77,7 @@ export default function TerminalView({ projectId, cwd, sessionId: externalSessio
         const rows = term.rows;
         const workingDir = cwd || undefined;
 
-        const sid = externalSessionId || await ptyAPI.create(cols, rows, workingDir);
+        const sid = externalSessionId || await ptyAPI.create(cols, rows, workingDir, command);
         sessionIdRef.current = sid;
 
         if (onSessionCreated && !externalSessionId) {
@@ -139,7 +140,7 @@ export default function TerminalView({ projectId, cwd, sessionId: externalSessio
       xtermRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [projectId, cwd, externalSessionId]);
+  }, [projectId, cwd, command, externalSessionId]);
 
   useEffect(() => {
     if (fitAddonRef.current && ready) {

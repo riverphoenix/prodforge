@@ -91,8 +91,8 @@ export default function ThreadsPanel({
   return (
     <div
       ref={panelRef}
-      className="fixed left-12 top-0 bottom-0 z-40 flex flex-col animate-slide-in-right"
-      style={{ width: '240px', backgroundColor: '#1e1e1e', borderRight: '1px solid #3e3e42' }}
+      className="fixed left-12 bottom-0 z-40 flex flex-col animate-slide-in-right"
+      style={{ width: '240px', top: '38px', backgroundColor: '#1e1e1e', borderRight: '1px solid #3e3e42' }}
     >
       <div className="px-3 pt-3 pb-2">
         <div className="flex items-center justify-between mb-3">

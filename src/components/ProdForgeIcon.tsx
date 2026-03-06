@@ -1,0 +1,28 @@
+interface ProdForgeIconProps {
+  size?: number;
+  className?: string;
+}
+
+export default function ProdForgeIcon({ size = 24, className = '' }: ProdForgeIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="80 40 352 432"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path
+        d="M256 56 Q256 56 344 232 Q408 344 344 408 Q296 456 256 456 Q216 456 168 408 Q104 344 168 232 Q256 56 256 56Z"
+        fill="#FFFFFF"
+      />
+      <path
+        d="M256 160 Q256 160 312 272 Q344 336 312 368 Q288 392 256 392 Q224 392 200 368 Q168 336 200 272 Q256 160 256 160Z"
+        fill="white"
+        opacity="0.15"
+      />
+      <ellipse cx="248" cy="304" rx="36" ry="44" fill="white" opacity="0.08" />
+    </svg>
+  );
+}

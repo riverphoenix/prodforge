@@ -5382,6 +5382,7 @@ pub async fn create_pty_session(
     cols: u16,
     rows: u16,
     cwd: Option<String>,
+    command: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     let session_id = uuid::Uuid::new_v4().to_string();
@@ -5390,7 +5391,7 @@ pub async fn create_pty_session(
     });
 
     let pty_manager = app.state::<crate::pty::PtyManager>();
-    pty_manager.create_session(&session_id, cols, rows, &working_dir, app.clone())?;
+    pty_manager.create_session(&session_id, cols, rows, &working_dir, command.as_deref(), app.clone())?;
 
     Ok(session_id)
 }
@@ -7468,4 +7469,24 @@ fn seed_agents(conn: &Connection) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn open_full_disk_access_settings() -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+        .spawn()
+        .map_err(|e| format!("Failed to open settings: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_app_executable_path() -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("Failed to get exe path: {}", e))?;
+    let path = exe.to_string_lossy().to_string();
+    if let Some(idx) = path.find(".app/") {
+        Ok(format!("{}.app", &path[..idx]))
+    } else {
+        Ok(path)
+    }
 }

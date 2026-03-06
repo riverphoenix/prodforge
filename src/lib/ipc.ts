@@ -159,6 +159,14 @@ export const settingsAPI = {
       default: return null;
     }
   },
+
+  async openFullDiskAccessSettings(): Promise<void> {
+    return await invoke('open_full_disk_access_settings');
+  },
+
+  async getAppExecutablePath(): Promise<string> {
+    return await invoke('get_app_executable_path');
+  },
 };
 
 export const tokenUsageAPI = {
@@ -331,8 +339,8 @@ export const workspaceAPI = {
 };
 
 export const ptyAPI = {
-  async create(cols: number, rows: number, cwd?: string): Promise<string> {
-    return await invoke('create_pty_session', { cols, rows, cwd });
+  async create(cols: number, rows: number, cwd?: string, command?: string): Promise<string> {
+    return await invoke('create_pty_session', { cols, rows, cwd, command });
   },
 
   async write(sessionId: string, data: string): Promise<void> {

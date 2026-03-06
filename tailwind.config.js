@@ -13,8 +13,8 @@ export default {
         'codex-surface': '#2d2d30',      // Cards, panels, hover states
         'codex-surface-hover': '#37373d', // Hover state for surfaces
         'codex-border': '#3e3e42',       // Borders (very subtle)
-        'codex-accent': '#007acc',       // VS Code blue accent
-        'codex-accent-hover': '#005a9e', // Accent hover
+        'codex-accent': '#8B5CF6',       // ProdForge purple accent
+        'codex-accent-hover': '#7C3AED', // Accent hover
         'codex-text-primary': '#cccccc', // Primary text
         'codex-text-secondary': '#858585', // Secondary text
         'codex-text-muted': '#6a6a6a',   // Muted text

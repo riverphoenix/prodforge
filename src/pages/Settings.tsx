@@ -48,8 +48,10 @@ export default function Settings() {
   const [discoveringModels, setDiscoveringModels] = useState<Record<string, boolean>>({});
   const [modelsExpanded, setModelsExpanded] = useState(false);
   const [globalContext, setGlobalContext] = useState('');
+  const [appPath, setAppPath] = useState('');
 
   useEffect(() => {
+    settingsAPI.getAppExecutablePath().then(setAppPath).catch(() => {});
     loadSettings();
   }, []);
 
@@ -584,6 +586,38 @@ export default function Settings() {
               >
                 {saving ? 'Saving...' : 'Save Provider Settings'}
               </button>
+            </div>
+
+            <div className="mt-10 pt-6 border-t border-codex-border/50">
+              <h2 className="text-lg font-semibold text-codex-text-primary mb-4">macOS Permissions</h2>
+              <div className="py-4 border-b border-codex-border/50">
+                <div className="flex items-start justify-between gap-8">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-codex-text-primary">Full Disk Access</div>
+                    <div className="text-xs text-codex-text-secondary mt-1">
+                      Required for the terminal to access directories like Documents, Desktop, and Downloads.
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => settingsAPI.openFullDiskAccessSettings()}
+                    className="px-4 py-2 bg-codex-surface hover:bg-codex-surface-hover border border-codex-border text-codex-text-primary rounded-md text-sm transition-colors whitespace-nowrap"
+                  >
+                    Open Settings
+                  </button>
+                </div>
+                <div className="mt-3 p-3 rounded-md bg-codex-surface/50 border border-codex-border/30">
+                  <div className="text-xs text-codex-text-secondary space-y-1.5">
+                    <p>1. Click <strong className="text-codex-text-primary">Open Settings</strong> above</p>
+                    <p>2. Click the <strong className="text-codex-text-primary">+</strong> button and add this app:</p>
+                    {appPath && (
+                      <code className="block text-[10px] text-codex-accent bg-codex-bg/50 px-2 py-1 rounded mt-1 break-all select-all cursor-text">
+                        {appPath}
+                      </code>
+                    )}
+                    <p>3. Restart ProdForge after granting access</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

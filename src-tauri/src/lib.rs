@@ -222,6 +222,8 @@ pub fn run() {
             delete_trace_spans_for_run,
             get_agent_analytics,
             get_skill_usage_analytics,
+            open_full_disk_access_settings,
+            get_app_executable_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,0 +1,10 @@
+<svg width="480" height="120" viewBox="0 0 480 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="480" height="120" rx="16" fill="#F5F5F5"/>
+  <g transform="translate(32, 14)">
+    <svg width="92" height="92" viewBox="80 40 352 432" fill="none">
+      <path d="M256 56 Q256 56 344 232 Q408 344 344 408 Q296 456 256 456 Q216 456 168 408 Q104 344 168 232 Q256 56 256 56Z" fill="#000000"/>
+      <path d="M256 160 Q256 160 312 272 Q344 336 312 368 Q288 392 256 392 Q224 392 200 368 Q168 336 200 272 Q256 160 256 160Z" fill="white" opacity="0.15"/>
+    </svg>
+  </g>
+  <text x="136" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="44" font-weight="700" fill="#1A1A2E" letter-spacing="-0.02em">ProdForge</text>
+</svg>

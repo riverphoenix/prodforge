@@ -15,12 +15,13 @@ import SkillsLibrary from './SkillsLibrary';
 import AgentsPage from './AgentsPage';
 import AgentTeamsPage from './AgentTeamsPage';
 import SchedulesPage from './SchedulesPage';
+import ClaudeChat from '../components/ClaudeChat';
 
 const MIN_HISTORY_WIDTH = 180;
 const MAX_HISTORY_WIDTH = 400;
 const DEFAULT_HISTORY_WIDTH = 224;
 
-type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'schedules';
+type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'schedules' | 'claude';
 
 interface ProjectViewProps {
   projectId: string;
@@ -222,6 +223,10 @@ export default function ProjectView({ projectId, activeTab, onTabChange, initial
 
         {activeTab === 'schedules' && (
           <SchedulesPage projectId={projectId} />
+        )}
+
+        {activeTab === 'claude' && (
+          <ClaudeChat projectId={projectId} />
         )}
 
       </div>
