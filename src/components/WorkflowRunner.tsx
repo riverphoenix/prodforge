@@ -107,7 +107,7 @@ export default function WorkflowRunner({ projectId, workflowId, apiKey, framewor
       });
     } catch (fetchErr) {
       if (fetchErr instanceof Error && fetchErr.name === 'AbortError') throw fetchErr;
-      throw new Error('Cannot connect to AI server. Please ensure the Python sidecar is running (cd python-sidecar && python main.py).');
+      throw new Error('Cannot connect to AI server. The server may still be starting — please wait a few seconds and try again.');
     }
 
     if (!response.ok) {

@@ -441,7 +441,7 @@ export default function PromptsLibrary({ projectId: _projectId, onUsePrompt }: P
 
       {variablePrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
-          <div className="w-full max-w-lg rounded-lg border border-codex-border shadow-2xl" style={{ backgroundColor: '#1e1e2e' }}>
+          <div className="w-full max-w-lg rounded-lg border border-codex-border shadow-2xl bg-codex-bg">
             <div className="px-5 pt-5 pb-3 border-b border-codex-border/50">
               <h3 className="text-sm font-semibold text-codex-text-primary">{variablePrompt.name}</h3>
               <p className="text-[10px] text-codex-text-muted mt-1">Fill in the variables below, then send to chat.</p>

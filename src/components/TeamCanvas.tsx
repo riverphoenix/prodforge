@@ -239,7 +239,7 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-        <div className="w-44 flex-shrink-0 border-r border-codex-border overflow-y-auto" style={{ backgroundColor: '#1a1a1a' }}>
+        <div className="w-44 flex-shrink-0 border-r border-codex-border overflow-y-auto bg-codex-sidebar">
           <div className="p-2">
             <input
               type="text"
@@ -289,7 +289,7 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#333" />
             <MiniMap
-              style={{ backgroundColor: '#1a1a1a' }}
+              className="bg-codex-sidebar"
               nodeColor="#3b82f6"
               maskColor="rgba(0,0,0,0.5)"
             />
@@ -300,7 +300,7 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
           </ReactFlow>
         </div>
 
-        <div className="w-52 flex-shrink-0 border-l border-codex-border overflow-y-auto" style={{ backgroundColor: '#1a1a1a' }}>
+        <div className="w-52 flex-shrink-0 border-l border-codex-border overflow-y-auto bg-codex-sidebar">
           <NodePropertiesPanel
             selectedNode={selectedDbNode}
             selectedEdge={selectedDbEdge}

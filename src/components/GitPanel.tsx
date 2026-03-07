@@ -126,7 +126,7 @@ export default function GitPanel({ repoPath, onRequestRepoConnect }: GitPanelPro
 
   if (!repoPath) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3" style={{ backgroundColor: '#0d1117' }}>
+      <div className="flex flex-col items-center justify-center h-full gap-3 bg-codex-bg">
         <svg className="w-8 h-8" style={{ color: '#484f58' }} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 3v12m0 0c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 0V9m12-6v6m0 0c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 0V3" />
         </svg>
@@ -170,7 +170,7 @@ export default function GitPanel({ repoPath, onRequestRepoConnect }: GitPanelPro
 
   if (diffText !== null) {
     return (
-      <div className="flex flex-col h-full" style={{ backgroundColor: '#0d1117' }}>
+      <div className="flex flex-col h-full bg-codex-bg">
         <div className="flex items-center px-3 gap-2 flex-shrink-0" style={{ height: '30px', borderBottom: '1px solid #21262d' }}>
           <button
             onClick={() => setDiffText(null)}
@@ -200,7 +200,7 @@ export default function GitPanel({ repoPath, onRequestRepoConnect }: GitPanelPro
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: '#0d1117' }}>
+    <div className="flex flex-col h-full bg-codex-bg">
       <div className="flex items-center px-3 gap-1 flex-shrink-0" style={{ height: '30px', borderBottom: '1px solid #21262d' }}>
         <button
           onClick={() => setActiveTab('changes')}

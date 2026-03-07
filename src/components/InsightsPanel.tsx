@@ -105,7 +105,7 @@ export default function InsightsPanel({ projectId, apiKey, onNavigateToFramework
   };
 
   return (
-    <div className="fixed right-0 top-0 bottom-0 w-80 border-l border-codex-border shadow-xl z-40 flex flex-col" style={{ backgroundColor: '#1e1e1e' }}>
+    <div className="fixed right-0 top-0 bottom-0 w-80 border-l border-codex-border shadow-xl z-40 flex flex-col bg-codex-bg">
       <div className="px-4 py-3 border-b border-codex-border flex items-center justify-between">
         <h3 className="text-sm font-semibold text-codex-text-primary">AI Insights</h3>
         <button onClick={onClose} className="text-codex-text-secondary hover:text-codex-text-primary text-lg">&times;</button>

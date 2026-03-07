@@ -39,7 +39,7 @@ export default function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: '#1e1e1e' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-codex-bg">
       <div className="max-w-lg w-full mx-4">
         {/* Progress dots */}
         <div className="flex items-center justify-center gap-2 mb-8">

@@ -944,12 +944,13 @@ async def scheduler_trigger(request: ScheduleTriggerRequest):
 
 
 if __name__ == "__main__":
-    # Run the server
+    import sys
     port = int(os.getenv("PORT", "8001"))
+    is_frozen = getattr(sys, 'frozen', False)
     uvicorn.run(
-        "main:app",
+        app if is_frozen else "main:app",
         host="127.0.0.1",
         port=port,
-        reload=True,
+        reload=not is_frozen,
         log_level="info"
     )

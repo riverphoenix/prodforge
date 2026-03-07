@@ -1,7 +1,9 @@
 mod commands;
 pub mod pty;
+mod sidecar;
 
 use commands::*;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -10,8 +12,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(pty::PtyManager::new())
+        .manage(sidecar::SidecarManager::new())
         .setup(|app| {
             init_db(&app.handle())?;
+            let sidecar_mgr = app.state::<sidecar::SidecarManager>();
+            sidecar_mgr.start(&app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

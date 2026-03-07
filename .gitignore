@@ -16,6 +16,13 @@ python-sidecar/__pycache__/
 target/
 Cargo.lock
 
+# Sidecar binaries (built via PyInstaller during CI/release)
+src-tauri/binaries/
+
+# PyInstaller
+python-sidecar/build/
+python-sidecar/dist/
+
 # Environment variables
 .env
 .env.local

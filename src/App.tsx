@@ -339,7 +339,7 @@ function App() {
             <span className="ml-auto text-[9px] text-codex-text-muted opacity-50">&#8984;K</span>
           </button>
           {searchOpen && (
-            <div className="absolute left-4 right-4 top-full mt-1 rounded-lg shadow-2xl border border-codex-border z-50 overflow-hidden" style={{ backgroundColor: '#252526' }}>
+            <div className="absolute left-4 right-4 top-full mt-1 rounded-lg shadow-2xl border border-codex-border z-50 overflow-hidden bg-codex-surface">
               <div className="flex items-center gap-2 px-3 py-2 border-b border-codex-border">
                 <svg className="w-4 h-4 text-codex-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -730,8 +730,7 @@ function App() {
 
                   {/* Chat input */}
                   <div
-                    className="rounded-xl border border-codex-border mb-6"
-                    style={{ backgroundColor: '#2d2d30' }}
+                    className="rounded-xl border border-codex-border mb-6 bg-codex-surface"
                   >
                     <textarea
                       ref={welcomeInputRef}

@@ -47,7 +47,7 @@ export default function TracingView({ runId, runType: _runType }: TracingViewPro
 
   if (!runId) {
     return (
-      <div className="h-full flex items-center justify-center" style={{ backgroundColor: '#0d1117' }}>
+      <div className="h-full flex items-center justify-center bg-codex-bg">
         <span style={{ color: '#484f58', fontSize: '12px' }}>Select an agent or team run to view traces</span>
       </div>
     );
@@ -55,7 +55,7 @@ export default function TracingView({ runId, runType: _runType }: TracingViewPro
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center" style={{ backgroundColor: '#0d1117' }}>
+      <div className="h-full flex items-center justify-center bg-codex-bg">
         <span style={{ color: '#484f58', fontSize: '12px' }}>Loading traces...</span>
       </div>
     );
@@ -66,7 +66,7 @@ export default function TracingView({ runId, runType: _runType }: TracingViewPro
   const totalRange = Math.max(maxEnd - minStart, 1);
 
   return (
-    <div className="h-full flex" style={{ backgroundColor: '#0d1117' }}>
+    <div className="h-full flex bg-codex-bg">
       <div className="flex-1 overflow-auto px-3 py-2">
         <div className="flex items-center justify-between mb-2">
           <span style={{ color: '#8b949e', fontSize: '11px' }}>{spans.length} spans</span>

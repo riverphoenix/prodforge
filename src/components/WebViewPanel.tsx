@@ -26,7 +26,7 @@ export default function WebViewPanel({ app }: WebViewPanelProps) {
   const [loading, setLoading] = useState(true);
 
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: '#0d1117' }}>
+    <div className="flex flex-col h-full bg-codex-bg">
       <div
         className="flex items-center gap-2 px-3 flex-shrink-0"
         style={{ height: '30px', borderBottom: '1px solid #21262d', backgroundColor: '#010409' }}

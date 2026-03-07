@@ -311,7 +311,7 @@ export default function TeamRunner({ team, agents: _agents, projectId, onBack }:
           )}
         </div>
 
-        <div className="w-56 flex-shrink-0 border-l border-codex-border overflow-y-auto" style={{ backgroundColor: '#1a1a1a' }}>
+        <div className="w-56 flex-shrink-0 border-l border-codex-border overflow-y-auto bg-codex-sidebar">
           <div className="px-3 py-2 text-[10px] font-semibold text-codex-text-muted uppercase tracking-wider border-b border-codex-border">
             Run History
           </div>

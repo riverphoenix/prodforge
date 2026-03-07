@@ -319,7 +319,7 @@ export default function FrameworkGenerator({
         });
       } catch (fetchErr) {
         if (fetchErr instanceof Error && fetchErr.name === 'AbortError') throw fetchErr;
-        throw new Error('Cannot connect to AI server. Please ensure the Python sidecar is running (cd python-sidecar && python main.py).');
+        throw new Error('Cannot connect to AI server. The server may still be starting — please wait a few seconds and try again.');
       }
 
       console.log('📡 Response status:', response.status, response.statusText);
@@ -419,7 +419,7 @@ export default function FrameworkGenerator({
       console.error('❌ Generation error:', err);
       let errorMessage = err instanceof Error ? err.message : String(err);
       if (!errorMessage || errorMessage === '{}' || errorMessage === '[object Object]') {
-        errorMessage = 'Generation failed. Please check that the Python sidecar is running and your API key is valid.';
+        errorMessage = 'Generation failed. Please check your API key is valid. The AI server may still be starting.';
       }
       setError(errorMessage);
       setFallbackProvider(null);

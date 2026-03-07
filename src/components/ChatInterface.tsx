@@ -415,13 +415,13 @@ export default function ChatInterface({
       let errorMessage: string;
 
       if (error instanceof TypeError && (error.message.includes('fetch') || error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('Load failed'))) {
-        errorMessage = 'Cannot connect to AI server. Please ensure the Python sidecar is running (cd python-sidecar && python main.py).';
+        errorMessage = 'Cannot connect to AI server. The server may still be starting — please wait a few seconds and try again.';
       } else if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === 'string') {
         errorMessage = error;
       } else {
-        errorMessage = 'Failed to connect to AI server. Check that the sidecar is running on port 8000.';
+        errorMessage = 'Failed to connect to AI server. The server may still be starting — please wait a few seconds and try again.';
       }
 
       if (errorMessage.includes('tokens exceed') || errorMessage.includes('token limit')) {

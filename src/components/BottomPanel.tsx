@@ -138,7 +138,7 @@ export default function BottomPanel({ height, projectId, onClose, initialTab }: 
         {activeTab === 'terminal' ? (
           <TerminalTabs projectId={projectId} />
         ) : activeTab === 'tracing' ? (
-          <div className="h-full flex items-center justify-center" style={{ backgroundColor: '#0d1117' }}>
+          <div className="h-full flex items-center justify-center bg-codex-bg">
             <span style={{ color: '#484f58', fontSize: '12px' }}>Select an agent or team run to view traces</span>
           </div>
         ) : activeTab === 'errors' ? (

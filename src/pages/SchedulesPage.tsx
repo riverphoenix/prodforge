@@ -207,8 +207,7 @@ export default function SchedulesPage({ projectId: _projectId }: SchedulesPagePr
             {schedules.map(schedule => (
               <div
                 key={schedule.id}
-                className="border border-codex-border rounded-lg p-4 hover:border-codex-accent/30 transition-colors"
-                style={{ backgroundColor: '#1e1e1e' }}
+                className="border border-codex-border rounded-lg p-4 hover:border-codex-accent/30 transition-colors bg-codex-bg"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -270,8 +269,7 @@ export default function SchedulesPage({ projectId: _projectId }: SchedulesPagePr
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { setShowCreateModal(false); resetForm(); }}>
           <div
-            className="w-[480px] rounded-lg border border-codex-border shadow-2xl"
-            style={{ backgroundColor: '#252526' }}
+            className="w-[480px] rounded-lg border border-codex-border shadow-2xl bg-codex-surface"
             onClick={e => e.stopPropagation()}
           >
             <div className="px-5 py-3 border-b border-codex-border">

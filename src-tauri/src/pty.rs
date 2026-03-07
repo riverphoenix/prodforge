@@ -41,8 +41,19 @@ impl PtyManager {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
+        let user = std::env::var("USER")
+            .or_else(|_| {
+                std::process::Command::new("id")
+                    .arg("-un")
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            })
+            .unwrap_or_else(|_| "root".to_string());
+
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+
+        let home = std::env::var("HOME").unwrap_or_else(|_| format!("/Users/{}", user));
+
         let (program, args): (String, Vec<String>) = if let Some(command) = command {
             let parts: Vec<&str> = command.split_whitespace().collect();
             let prog = parts[0].to_string();
@@ -51,7 +62,7 @@ impl PtyManager {
         } else {
             ("/usr/bin/login".to_string(), vec![
                 "-fpl".to_string(),
-                user,
+                user.clone(),
                 shell,
                 "-l".to_string(),
             ])
@@ -69,6 +80,8 @@ impl PtyManager {
         }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        cmd.env("HOME", &home);
+        cmd.env("USER", &user);
 
         let child = pair
             .slave
