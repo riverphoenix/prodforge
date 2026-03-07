@@ -19,8 +19,8 @@ impl SidecarManager {
 
         match Command::new(&exe_path)
             .env("PORT", "8001")
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit())
             .spawn()
         {
             Ok(child) => {
@@ -28,6 +28,7 @@ impl SidecarManager {
                 if let Ok(mut guard) = self.child.lock() {
                     *guard = Some(child);
                 }
+                wait_for_health(15);
             }
             Err(e) => {
                 eprintln!("[sidecar] Failed to start: {}. Path: {:?}", e, exe_path);
@@ -85,6 +86,29 @@ fn resolve_sidecar_path(app: &AppHandle) -> std::path::PathBuf {
     }
 
     bundled
+}
+
+fn wait_for_health(max_seconds: u32) {
+    use std::io::Read;
+    for i in 0..max_seconds {
+        if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
+            &"127.0.0.1:8001".parse().unwrap(),
+            std::time::Duration::from_secs(1),
+        ) {
+            let req = "GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n";
+            if std::io::Write::write_all(&mut stream, req.as_bytes()).is_ok() {
+                let mut buf = [0u8; 256];
+                let _ = stream.read(&mut buf);
+                let resp = String::from_utf8_lossy(&buf);
+                if resp.contains("200") || resp.contains("healthy") {
+                    eprintln!("[sidecar] Health check passed after {}s", i + 1);
+                    return;
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    eprintln!("[sidecar] Warning: health check did not pass within {}s", max_seconds);
 }
 
 fn current_target_triple() -> &'static str {
