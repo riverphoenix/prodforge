@@ -346,7 +346,7 @@ export default function ContextManager({ projectId }: ContextManagerProps) {
 
       {/* Add Document Dialog */}
       {showAddDialog && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6">
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-6">
           <div className="border border-codex-border rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto bg-codex-bg">
             <h3 className="text-lg font-semibold text-codex-text-primary mb-4">Add Context Document</h3>
 

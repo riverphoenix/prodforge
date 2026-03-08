@@ -277,7 +277,7 @@ export default function AgentTeamsPage({ projectId }: AgentTeamsPageProps) {
       </div>
 
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50">
           <div className="bg-codex-bg border border-codex-border rounded-lg p-6 w-[400px] shadow-xl">
             <h2 className="text-sm font-semibold text-codex-text-primary mb-4">Create New Team</h2>
             <div className="space-y-3">

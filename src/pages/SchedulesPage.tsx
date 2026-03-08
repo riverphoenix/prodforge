@@ -267,7 +267,7 @@ export default function SchedulesPage({ projectId: _projectId }: SchedulesPagePr
       </div>
 
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { setShowCreateModal(false); resetForm(); }}>
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50" onClick={() => { setShowCreateModal(false); resetForm(); }}>
           <div
             className="w-[480px] rounded-lg border border-codex-border shadow-2xl bg-codex-surface"
             onClick={e => e.stopPropagation()}

@@ -50,7 +50,7 @@ export default function RepoConnect({ onConnect, onClose }: RepoConnectProps) {
   return (
     <div
       className="fixed inset-0 flex items-center justify-center"
-      style={{ backgroundColor: '#00000080', zIndex: 50 }}
+      style={{ backgroundColor: '#000000f2', zIndex: 50 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="rounded-lg shadow-xl w-[440px]" style={{ backgroundColor: '#0d1117', border: '1px solid #30363d' }}>

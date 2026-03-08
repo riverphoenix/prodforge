@@ -688,7 +688,7 @@ export default function DocumentsExplorer({ projectId }: DocumentsExplorerProps)
       {/* Move-to-Folder Modal */}
       {moveTarget && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black/95 flex items-center justify-center z-50"
           onClick={() => setMoveTarget(null)}
         >
           <div
@@ -744,7 +744,7 @@ export default function DocumentsExplorer({ projectId }: DocumentsExplorerProps)
       {/* Add Document Modal */}
       {isAddingDoc && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black/95 flex items-center justify-center z-50"
           onClick={() => { setIsAddingDoc(false); setNewDocName(''); setNewDocContent(''); }}
         >
           <div
@@ -800,7 +800,7 @@ export default function DocumentsExplorer({ projectId }: DocumentsExplorerProps)
       {/* Color Picker Modal */}
       {colorTarget && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black/95 flex items-center justify-center z-50"
           onClick={() => setColorTarget(null)}
         >
           <div

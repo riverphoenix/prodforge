@@ -63,7 +63,7 @@ export default function BatchExportDialog({ mode, items, onExport, onSaveFiles, 
   const label = mode === 'frameworks' ? 'Frameworks' : 'Prompts';
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50" onClick={onClose}>
       <div
         className="bg-codex-bg border border-codex-border rounded-lg shadow-xl w-[550px] max-h-[80vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}

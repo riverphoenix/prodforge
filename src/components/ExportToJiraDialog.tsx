@@ -51,7 +51,7 @@ export default function ExportToJiraDialog({ outputId, outputName, onClose }: Ex
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-codex-bg border border-codex-border rounded-lg shadow-xl w-[480px] overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-codex-border flex items-center justify-between">
           <h2 className="text-sm font-semibold text-codex-text-primary">Export to Jira</h2>

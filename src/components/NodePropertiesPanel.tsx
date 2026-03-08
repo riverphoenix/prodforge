@@ -44,6 +44,14 @@ export default function NodePropertiesPanel({ selectedNode, selectedEdge, agents
     } catch {}
   };
 
+  const handleDataMappingChange = async (dataMapping: string) => {
+    if (!selectedEdge) return;
+    try {
+      const updated = await teamEdgesAPI.update(selectedEdge.id, { dataMapping: dataMapping || '{}' });
+      onEdgeUpdate(updated);
+    } catch {}
+  };
+
   if (!selectedNode && !selectedEdge) {
     return (
       <div className="p-3 text-center">
@@ -129,6 +137,17 @@ export default function NodePropertiesPanel({ selectedNode, selectedEdge, agents
             />
           </div>
         )}
+        <div>
+          <label className="block text-[10px] text-codex-text-muted mb-1">Data Mapping</label>
+          <textarea
+            value={selectedEdge.data_mapping || '{}'}
+            onChange={(e) => handleDataMappingChange(e.target.value)}
+            placeholder='{"output": "input"}'
+            rows={3}
+            className="w-full px-2 py-1 bg-codex-surface border border-codex-border rounded text-[10px] text-codex-text-primary placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent resize-none font-mono"
+          />
+          <p className="text-[8px] text-codex-text-muted mt-0.5">Maps source output fields to target input fields</p>
+        </div>
       </div>
     );
   }

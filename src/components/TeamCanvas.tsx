@@ -70,7 +70,7 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [agentSearch, setAgentSearch] = useState('');
-  const dragRef = useRef<{ agentId: string } | null>(null);
+  const dragRef = useRef<{ agentId: string; nodeType?: string } | null>(null);
 
   const selectedDbNode = selectedNodeId ? dbNodes.find(n => n.id === selectedNodeId) || null : null;
   const selectedDbEdge = selectedEdgeId ? dbEdges.find(e => e.id === selectedEdgeId) || null : null;
@@ -157,8 +157,8 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
     setSaving(false);
   };
 
-  const handleDragStart = (agentId: string) => {
-    dragRef.current = { agentId };
+  const handleDragStart = (agentId: string, nodeType?: string) => {
+    dragRef.current = { agentId, nodeType };
   };
 
   const handleDrop = useCallback(async (event: React.DragEvent) => {
@@ -167,11 +167,12 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - bounds.left;
     const y = event.clientY - bounds.top;
+    const nodeType = dragRef.current.nodeType || 'agent';
     try {
       const node = await teamNodesAPI.create({
         teamId: team.id,
         agentId: dragRef.current.agentId,
-        nodeType: 'agent',
+        nodeType,
         positionX: x,
         positionY: y,
         role: 'worker',
@@ -241,6 +242,33 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         <div className="w-44 flex-shrink-0 border-r border-codex-border overflow-y-auto bg-codex-sidebar">
           <div className="p-2">
+            <div className="text-[9px] font-semibold text-codex-text-muted uppercase tracking-wider mb-2 px-1">
+              Flow Controls
+            </div>
+            <div className="flex gap-1 mb-3">
+              <div
+                draggable
+                onDragStart={() => handleDragStart('__connector__', 'connector')}
+                className="flex-1 flex flex-col items-center gap-1 px-2 py-2 cursor-grab bg-codex-surface border border-codex-border rounded hover:border-codex-accent/50 transition-colors"
+              >
+                <div className="w-5 h-5 rounded-full border-2 border-codex-text-muted flex items-center justify-center">
+                  <svg className="w-2.5 h-2.5 text-codex-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                </div>
+                <span className="text-[8px] text-codex-text-muted">Merge</span>
+              </div>
+              <div
+                draggable
+                onDragStart={() => handleDragStart('__conditional__', 'conditional')}
+                className="flex-1 flex flex-col items-center gap-1 px-2 py-2 cursor-grab bg-codex-surface border border-codex-border rounded hover:border-codex-accent/50 transition-colors"
+              >
+                <div className="w-5 h-5 border-2 border-yellow-500/60 flex items-center justify-center" style={{ transform: 'rotate(45deg)' }}>
+                  <span className="text-[8px] text-yellow-400" style={{ transform: 'rotate(-45deg)' }}>?</span>
+                </div>
+                <span className="text-[8px] text-codex-text-muted">Branch</span>
+              </div>
+            </div>
             <input
               type="text"
               placeholder="Search agents..."
@@ -249,7 +277,7 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
               className="w-full px-2 py-1 mb-2 bg-codex-surface border border-codex-border rounded text-[10px] text-codex-text-primary placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
             />
             <div className="text-[9px] font-semibold text-codex-text-muted uppercase tracking-wider mb-1 px-1">
-              Drag to canvas
+              Agents
             </div>
           </div>
           {filteredAgents.map(a => (
