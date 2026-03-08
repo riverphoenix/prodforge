@@ -21,6 +21,7 @@ import { Command } from './lib/commandRegistry';
 import { Project, Conversation, FrameworkDefinition, SavedPrompt, FrameworkOutput, SearchResult, LLMProvider } from './lib/types';
 import ModelSelector from './components/ModelSelector';
 import ProdForgeIcon from './components/ProdForgeIcon';
+import AgentRunProvider from './components/AgentRunProvider';
 
 type View = 'welcome' | 'project' | 'settings';
 type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'claude';
@@ -303,6 +304,7 @@ function App() {
   ], [currentProjectId]);
 
   return (
+    <AgentRunProvider>
     <ToastProvider>
     {showSetupWizard && (
       <SetupWizard
@@ -937,6 +939,7 @@ function App() {
       )}
     </div>
     </ToastProvider>
+    </AgentRunProvider>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { AgentDef, Skill, AgentRun, AgentStreamEvent } from '../lib/types';
-import { agentsAPI, agentRunsAPI, agentExecutionAPI, settingsAPI, traceSpansAPI } from '../lib/ipc';
+import { AgentDef, Skill, AgentRun } from '../lib/types';
+import { agentRunsAPI } from '../lib/ipc';
+import { useAgentRunManager } from '../lib/agentRunManager';
 
 interface AgentRunnerProps {
   agent: AgentDef;
@@ -12,15 +13,19 @@ interface AgentRunnerProps {
 export default function AgentRunner({ agent, skills, projectId, onBack }: AgentRunnerProps) {
   const [prompt, setPrompt] = useState('');
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
-  const [output, setOutput] = useState('');
-  const [isRunning, setIsRunning] = useState(false);
-  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [viewingOutput, setViewingOutput] = useState<string | null>(null);
+  const [viewingTokens, setViewingTokens] = useState(0);
+  const [viewingCost, setViewingCost] = useState(0);
   const [runs, setRuns] = useState<AgentRun[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [totalTokens, setTotalTokens] = useState(0);
-  const [cost, setCost] = useState(0);
   const outputRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const { activeRuns, startRun, cancelRun } = useAgentRunManager();
+
+  const activeRun = activeRuns.get(agent.id);
+  const isRunning = activeRun?.status === 'running';
+  const output = viewingOutput ?? activeRun?.output ?? '';
+  const error = activeRun?.error ?? null;
+  const totalTokens = viewingOutput !== null ? viewingTokens : (activeRun?.totalTokens ?? 0);
+  const cost = viewingOutput !== null ? viewingCost : (activeRun?.cost ?? 0);
 
   const agentSkills = (() => {
     try {
@@ -43,156 +48,51 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
   }, [loadRuns]);
 
   useEffect(() => {
-    if (outputRef.current) {
+    if (activeRun && activeRun.status !== 'running') {
+      loadRuns();
+    }
+  }, [activeRun?.status, loadRuns]);
+
+  useEffect(() => {
+    if (outputRef.current && viewingOutput === null) {
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
     }
-  }, [output]);
+  }, [output, viewingOutput]);
 
   const handleRun = async () => {
     if (!prompt.trim() || isRunning) return;
-
-    setIsRunning(true);
-    setOutput('');
-    setError(null);
-    setTotalTokens(0);
-    setCost(0);
-
-    const abort = new AbortController();
-    abortRef.current = abort;
-
-    try {
-      await agentsAPI_incrementUsage();
-
-      let apiKey = '';
-      if (agent.provider === 'anthropic') {
-        apiKey = await settingsAPI.getDecryptedAnthropicKey() || '';
-      } else if (agent.provider === 'google') {
-        apiKey = await settingsAPI.getDecryptedGoogleKey() || '';
-      } else {
-        apiKey = await settingsAPI.getDecryptedApiKey() || '';
-      }
-
-      const skillPrompts = agentSkills.map(s => s.system_prompt);
-
-      const response = await agentExecutionAPI.runStream({
-        agentId: agent.id,
-        projectId,
-        prompt: prompt.trim(),
-        skillId: selectedSkillId || undefined,
-        model: agent.model,
-        provider: agent.provider,
-        apiKey,
-        maxTokens: agent.max_tokens,
-        temperature: agent.temperature,
-        systemPrompt: agent.system_instructions,
-        skillPrompts,
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(errText || `HTTP ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        if (abort.signal.aborted) break;
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') continue;
-
-          try {
-            const event: AgentStreamEvent = JSON.parse(data);
-            if (event.type === 'run_id' && event.run_id) {
-              setCurrentRunId(event.run_id);
-            } else if (event.type === 'content_block_delta' && event.delta?.text) {
-              setOutput(prev => prev + event.delta!.text);
-            } else if (event.type === 'message_stop') {
-              if (event.usage) {
-                setTotalTokens(event.usage.input_tokens + event.usage.output_tokens);
-              }
-              if (event.cost) {
-                setCost(event.cost);
-              }
-            } else if (event.type === 'fallback' && event.message) {
-              setOutput(prev => prev + `\n[${event.message}]\n`);
-            } else if (event.type === 'trace_spans' && event.spans) {
-              for (const span of event.spans) {
-                try {
-                  await traceSpansAPI.create({
-                    id: span.id,
-                    parentSpanId: span.parent_span_id,
-                    runId: span.run_id,
-                    runType: span.run_type,
-                    spanName: span.span_name,
-                    spanKind: span.span_kind,
-                    input: span.input || '',
-                    metadata: typeof span.metadata === 'string' ? span.metadata : JSON.stringify(span.metadata || {}),
-                    startedAt: span.started_at,
-                  });
-                  if (span.status === 'completed' || span.status === 'failed') {
-                    await traceSpansAPI.update(span.id, {
-                      output: span.output || '',
-                      status: span.status,
-                      tokens: span.tokens ?? undefined,
-                      cost: span.cost ?? undefined,
-                      endedAt: span.ended_at ?? undefined,
-                    });
-                  }
-                } catch {}
-              }
-            } else if (event.type === 'error') {
-              setError(event.error || 'Unknown error');
-            }
-          } catch {}
-        }
-      }
-
-      await loadRuns();
-    } catch (err) {
-      if (!abort.signal.aborted) {
-        setError(err instanceof Error ? err.message : 'Failed to run agent');
-      }
-    } finally {
-      setIsRunning(false);
-      abortRef.current = null;
-    }
+    setViewingOutput(null);
+    setViewingTokens(0);
+    setViewingCost(0);
+    const skillPrompts = agentSkills.map(s => s.system_prompt);
+    await startRun(agent, prompt.trim(), projectId, selectedSkillId || undefined, skillPrompts);
   };
 
-  const agentsAPI_incrementUsage = async () => {
-    try {
-      await agentsAPI.incrementUsage(agent.id);
-    } catch {}
-  };
-
-  const handleCancel = async () => {
-    abortRef.current?.abort();
-    if (currentRunId) {
-      try {
-        await agentExecutionAPI.cancel(currentRunId);
-      } catch {}
-    }
-    setIsRunning(false);
+  const handleCancel = () => {
+    cancelRun(agent.id);
   };
 
   const handleLoadRun = (run: AgentRun) => {
-    setOutput(run.output_content || '');
-    setTotalTokens(run.total_tokens);
-    setCost(run.cost);
+    setViewingOutput(run.output_content || '');
+    setViewingTokens(run.total_tokens);
+    setViewingCost(run.cost);
     setPrompt(run.input_prompt);
   };
+
+  const handleShowLive = () => {
+    setViewingOutput(null);
+    setViewingTokens(0);
+    setViewingCost(0);
+  };
+
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!isRunning) { setElapsed(0); return; }
+    const iv = setInterval(() => {
+      if (activeRun) setElapsed(Math.floor((Date.now() - activeRun.startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [isRunning, activeRun]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }} className="bg-codex-bg">
@@ -203,10 +103,16 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
           </svg>
         </button>
         <span className="text-lg">{agent.icon}</span>
-        <div>
+        <div className="flex-1">
           <h2 className="text-sm font-semibold text-codex-text-primary">{agent.name}</h2>
           <p className="text-[10px] text-codex-text-muted">{agent.model} via {agent.provider}</p>
         </div>
+        {isRunning && (
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+            <span className="text-[10px] text-green-300">Running ({elapsed}s)</span>
+          </div>
+        )}
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
@@ -248,7 +154,7 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
                     onClick={handleCancel}
                     className="px-4 py-2 text-xs text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors"
                   >
-                    Cancel
+                    Stop
                   </button>
                 ) : (
                   <button
@@ -263,6 +169,16 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
             </div>
           </div>
 
+          {isRunning && viewingOutput !== null && (
+            <button
+              onClick={handleShowLive}
+              className="mx-6 mb-2 px-3 py-1.5 text-[10px] text-green-300 bg-green-500/10 border border-green-500/30 rounded flex items-center gap-2"
+            >
+              <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              Agent is running - click to see live output
+            </button>
+          )}
+
           <div ref={outputRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }} className="px-6 pb-4">
             {error && (
               <div className="mb-3 text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-3 py-2">
@@ -274,10 +190,21 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
               <div className="prose prose-invert prose-sm max-w-none">
                 <pre className="whitespace-pre-wrap text-xs text-codex-text-primary leading-relaxed font-sans">
                   {output}
-                  {isRunning && <span className="inline-block w-2 h-4 bg-codex-accent animate-pulse ml-0.5" />}
+                  {isRunning && viewingOutput === null && <span className="inline-block w-2 h-4 bg-codex-accent animate-pulse ml-0.5" />}
                 </pre>
               </div>
-            ) : !isRunning && (
+            ) : isRunning ? (
+              <div className="text-center py-16">
+                <div className="flex items-center justify-center gap-1 mb-3">
+                  <span className="inline-block w-2 h-2 bg-codex-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="inline-block w-2 h-2 bg-codex-accent rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="inline-block w-2 h-2 bg-codex-accent rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <p className="text-xs text-codex-text-muted">
+                  Thinking...
+                </p>
+              </div>
+            ) : (
               <div className="text-center py-16">
                 <div className="text-3xl mb-2">{agent.icon}</div>
                 <p className="text-xs text-codex-text-muted">
@@ -294,6 +221,11 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
             <div className="px-6 py-2 flex-shrink-0 border-t border-codex-border flex items-center gap-4 text-[10px] text-codex-text-muted">
               <span>{totalTokens.toLocaleString()} tokens</span>
               {cost > 0 && <span>${cost.toFixed(4)}</span>}
+              {activeRun && activeRun.status !== 'running' && (
+                <span className={activeRun.status === 'completed' ? 'text-green-300' : activeRun.status === 'failed' ? 'text-red-300' : 'text-yellow-300'}>
+                  {activeRun.status}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -302,7 +234,21 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
           <div className="px-3 py-2 text-[10px] font-semibold text-codex-text-muted uppercase tracking-wider border-b border-codex-border">
             Run History
           </div>
-          {runs.length === 0 ? (
+          {activeRun && activeRun.status === 'running' && (
+            <button
+              onClick={handleShowLive}
+              className="w-full px-3 py-2 text-left bg-green-500/5 border-b border-codex-border/30"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                <span className="text-[10px] text-green-300 font-medium">Live</span>
+              </div>
+              <div className="text-[10px] text-codex-text-primary truncate mt-0.5">
+                {activeRun.prompt.slice(0, 50)}
+              </div>
+            </button>
+          )}
+          {runs.length === 0 && !activeRun ? (
             <div className="px-3 py-4 text-[10px] text-codex-text-muted text-center">
               No runs yet
             </div>
