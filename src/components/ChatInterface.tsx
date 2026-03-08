@@ -46,6 +46,7 @@ export default function ChatInterface({
   const [selectedProvider, setSelectedProvider] = useState<LLMProvider>(initialProvider || 'openai');
   const [selectedModel, setSelectedModel] = useState(initialModel || 'gpt-5');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Context attachment state
   const [selectedContextDocs, setSelectedContextDocs] = useState<string[]>([]);
@@ -311,11 +312,15 @@ export default function ChatInterface({
         hasApiKey: !!apiKey,
       });
 
+      const abort = new AbortController();
+      abortRef.current = abort;
+
       const response = await fetch('http://127.0.0.1:8001/chat/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: abort.signal,
         body: JSON.stringify({
           project_id: projectId,
           messages: chatMessages,
@@ -441,6 +446,25 @@ export default function ChatInterface({
       } catch { /* ignore */ }
     } finally {
       setLoading(false);
+      abortRef.current = null;
+    }
+  };
+
+  const handleStop = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    if (streamingMessage) {
+      const partialMsg: MessageWithContext = {
+        id: `partial-${Date.now()}`,
+        conversation_id: conversationId || '',
+        role: 'assistant',
+        content: streamingMessage + '\n\n*(generation stopped)*',
+        tokens: 0,
+        created_at: Date.now(),
+      };
+      setMessages(prev => [...prev, partialMsg]);
+      setStreamingMessage('');
     }
   };
 
@@ -739,20 +763,28 @@ export default function ChatInterface({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
                 </svg>
               </button>
-              <button
-                onClick={handleSend}
-                disabled={loading || !input.trim()}
-                className="w-7 h-7 flex items-center justify-center bg-codex-text-primary text-codex-bg disabled:bg-codex-surface disabled:text-codex-text-muted disabled:cursor-not-allowed rounded-md transition-colors"
-                title="Send message"
-              >
-                {loading ? (
-                  <div className="w-3.5 h-3.5 border-2 border-codex-bg border-t-transparent rounded-full animate-spin"></div>
-                ) : (
+              {loading ? (
+                <button
+                  onClick={handleStop}
+                  className="w-7 h-7 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-md transition-colors"
+                  title="Stop generation"
+                >
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="1" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className="w-7 h-7 flex items-center justify-center bg-codex-text-primary text-codex-bg disabled:bg-codex-surface disabled:text-codex-text-muted disabled:cursor-not-allowed rounded-md transition-colors"
+                  title="Send message"
+                >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
                   </svg>
-                )}
-              </button>
+                </button>
+              )}
             </div>
           </div>
 

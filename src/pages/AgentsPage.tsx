@@ -164,6 +164,9 @@ export default function AgentsPage({ projectId }: AgentsPageProps) {
             <p className="text-sm text-codex-text-secondary mt-1">
               {agents.length} AI agents that compose PM skills
             </p>
+            <p className="text-[10px] text-codex-text-muted mt-1">
+              Requires a configured API key in Settings (Claude, OpenAI, Google, or Ollama).
+            </p>
           </div>
           <button
             onClick={handleNewAgent}

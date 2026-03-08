@@ -13,10 +13,9 @@ const MODEL_TIER_COLORS: Record<ModelTier, { bg: string; text: string }> = {
 
 interface SkillsLibraryProps {
   projectId: string;
-  onTestSkill?: (skill: Skill) => void;
 }
 
-export default function SkillsLibrary({ projectId: _projectId, onTestSkill }: SkillsLibraryProps) {
+export default function SkillsLibrary({ projectId: _projectId }: SkillsLibraryProps) {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [categories, setCategories] = useState<SkillCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,13 +122,6 @@ export default function SkillsLibrary({ projectId: _projectId, onTestSkill }: Sk
     await loadData();
   };
 
-  const handleTest = async (skill: Skill) => {
-    try {
-      await skillsAPI.incrementUsage(skill.id);
-    } catch {}
-    onTestSkill?.(skill);
-  };
-
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }} className="bg-codex-bg">
@@ -148,6 +140,9 @@ export default function SkillsLibrary({ projectId: _projectId, onTestSkill }: Sk
             <h1 className="text-2xl font-semibold text-codex-text-primary">Skills Library</h1>
             <p className="text-sm text-codex-text-secondary mt-1">
               {skills.length} PM skills across {categories.length} categories
+            </p>
+            <p className="text-[10px] text-codex-text-muted mt-1">
+              Requires a configured Claude API key (Settings) to run skills via Agents.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -293,12 +288,6 @@ export default function SkillsLibrary({ projectId: _projectId, onTestSkill }: Sk
                       Used {skill.usage_count}x
                     </span>
                     <div className="flex gap-1">
-                      <button
-                        onClick={() => handleTest(skill)}
-                        className="text-[10px] px-2 py-1 text-codex-accent hover:text-codex-accent/80 font-medium"
-                      >
-                        Test
-                      </button>
                       <button
                         onClick={() => { setEditingSkill(skill); setShowEditor(true); }}
                         className="text-[10px] px-2 py-1 text-codex-text-secondary hover:text-codex-text-primary opacity-0 group-hover:opacity-100 transition-opacity"

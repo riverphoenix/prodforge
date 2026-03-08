@@ -26,7 +26,7 @@ export default function ImportPreviewDialog({ preview, onConfirm, onClose }: Imp
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={onClose}>
       <div
         className="bg-codex-bg border border-codex-border rounded-lg shadow-xl w-[500px] max-h-[80vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}

@@ -23,7 +23,7 @@ export default function ShortcutOverlay({ onClose }: ShortcutOverlayProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/80" />
       <div
         className="relative bg-codex-surface rounded-xl border border-codex-border shadow-2xl p-8 max-w-lg w-full mx-4"
         onClick={(e) => e.stopPropagation()}

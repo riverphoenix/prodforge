@@ -37,7 +37,7 @@ ProdForge is a native desktop app that combines AI-driven frameworks, autonomous
 - **Jira & Notion Export** — Push outputs directly to external tools.
 - **Analytics Dashboard** — Token usage trends, cost breakdowns, agent performance, CSV export.
 - **Tracing** — Hierarchical span recording with timeline visualization for all executions.
-- **Scheduling** — Cron, interval, and event triggers for automated agent and workflow runs.
+- **Embedded AI Server** — The Python sidecar auto-launches inside the app. No manual setup required.
 
 ## Tech Stack
 
@@ -68,10 +68,13 @@ Grab the latest `.dmg` from the [Releases page](https://github.com/riverphoenix/
 ### Build from Source
 
 **Prerequisites:**
-- macOS 10.15+
-- Rust 1.70+ with `cargo`
-- Node.js 18+
-- Python 3.11+
+- macOS 10.15+ (Apple Silicon or Intel)
+- [Rust](https://rustup.rs/) 1.70+ with `cargo`
+- [Node.js](https://nodejs.org/) 18+ with `npm`
+- [Python](https://www.python.org/) 3.10+
+- [PyInstaller](https://pyinstaller.org/) (`pip install pyinstaller`)
+
+**1. Clone and install dependencies:**
 
 ```bash
 git clone https://github.com/riverphoenix/prodforge.git
@@ -80,7 +83,7 @@ cd prodforge
 # Frontend dependencies
 npm install
 
-# Python sidecar
+# Python sidecar dependencies
 cd python-sidecar
 python -m venv venv
 source venv/bin/activate
@@ -88,35 +91,63 @@ pip install -r requirements.txt
 cd ..
 ```
 
-### Running Locally
+**2. Build the Python sidecar binary:**
 
-You need two processes: the Python sidecar and the Tauri app.
-
-**Terminal 1 — AI sidecar:**
+The AI server is compiled into a standalone binary that gets bundled inside the app.
 
 ```bash
 cd python-sidecar
 source venv/bin/activate
-python main.py
+pyinstaller prodforge-sidecar.spec --distpath ../src-tauri/binaries --clean -y
+
+# Rename to match the Tauri target triple
+mv ../src-tauri/binaries/prodforge-sidecar ../src-tauri/binaries/prodforge-sidecar-aarch64-apple-darwin
+# For Intel Mac, use: prodforge-sidecar-x86_64-apple-darwin
+cd ..
 ```
 
-The FastAPI server starts on `http://localhost:8000`.
-
-**Terminal 2 — App:**
+**3. Run in development mode:**
 
 ```bash
 npm run tauri dev
 ```
 
-Hot-reload is enabled for both frontend and Rust changes.
+The app launches with hot-reload for both frontend and Rust changes. The AI sidecar starts automatically inside the app.
 
-### Building for Production
+**4. Build the distributable (.dmg):**
 
 ```bash
 npm run tauri build
 ```
 
-Outputs a `.dmg` installer in `src-tauri/target/release/bundle/dmg/`.
+Outputs `ProdForge_1.0.0_aarch64.dmg` in `src-tauri/target/release/bundle/dmg/`.
+
+### Create a Desktop Launcher (alternative to DMG)
+
+If you prefer running from source instead of installing the distributable, create a shell script:
+
+```bash
+cat > ~/Desktop/ProdForge.command << 'EOF'
+#!/bin/bash
+cd ~/path/to/prodforge
+npm run tauri dev
+EOF
+chmod +x ~/Desktop/ProdForge.command
+```
+
+Double-click `ProdForge.command` on your Desktop to launch.
+
+### Using Ollama for Free Local AI
+
+[Ollama](https://ollama.ai) lets you run AI models locally with zero API costs.
+
+1. **Install Ollama:** Download from [ollama.ai](https://ollama.ai) or `brew install ollama`
+2. **Pull a model:** `ollama pull llama3` (or `mistral`, `codellama`, etc.)
+3. **Start Ollama:** `ollama serve` (runs on `http://localhost:11434`)
+4. **Configure in ProdForge:** Go to Settings, enter `http://localhost:11434` as the Ollama URL
+5. **Select Ollama** as your provider in the Chat model selector
+
+Popular models: `llama3` (8B, fast), `llama3:70b` (70B, better quality), `mistral` (7B), `codellama` (code-focused).
 
 ## First Run
 

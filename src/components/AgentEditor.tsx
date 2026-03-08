@@ -2,8 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { AgentDef, Skill, SkillCategory, LLMProvider } from '../lib/types';
 import { agentsAPI } from '../lib/ipc';
 
-const AGENT_ICONS = ['🤖', '🧠', '⚡', '🎯', '📊', '🔬', '🚀', '💡', '📋', '🔍', '🛡️', '🌟', '📈', '🎨', '🔧'];
-
 const PROVIDERS: { id: LLMProvider; label: string }[] = [
   { id: 'anthropic', label: 'Anthropic' },
   { id: 'openai', label: 'OpenAI' },
@@ -32,7 +30,6 @@ export default function AgentEditor({ agent, skills, categories: _categories, on
   const [contextStrategy, setContextStrategy] = useState<'auto' | 'manual' | 'rag'>('auto');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showIconPicker, setShowIconPicker] = useState(false);
   const [skillSearch, setSkillSearch] = useState('');
 
   useEffect(() => {
@@ -144,28 +141,6 @@ export default function AgentEditor({ agent, skills, categories: _categories, on
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }} className="px-8 py-6">
         <div className="max-w-3xl space-y-6">
           <div className="flex gap-4">
-            <div className="relative">
-              <label className="block text-xs text-codex-text-secondary mb-1">Icon</label>
-              <button
-                onClick={() => setShowIconPicker(!showIconPicker)}
-                className="w-12 h-12 flex items-center justify-center text-2xl bg-codex-surface border border-codex-border rounded-lg hover:border-codex-accent/50 transition-colors"
-              >
-                {icon}
-              </button>
-              {showIconPicker && (
-                <div className="absolute top-full left-0 mt-1 p-2 bg-codex-surface border border-codex-border rounded-lg shadow-xl z-10 grid grid-cols-5 gap-1">
-                  {AGENT_ICONS.map(i => (
-                    <button
-                      key={i}
-                      onClick={() => { setIcon(i); setShowIconPicker(false); }}
-                      className="w-8 h-8 flex items-center justify-center text-lg hover:bg-codex-accent/20 rounded transition-colors"
-                    >
-                      {i}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
             <div className="flex-1">
               <label className="block text-xs text-codex-text-secondary mb-1">Name</label>
               <input

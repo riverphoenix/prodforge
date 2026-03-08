@@ -23,7 +23,7 @@ import ModelSelector from './components/ModelSelector';
 import ProdForgeIcon from './components/ProdForgeIcon';
 
 type View = 'welcome' | 'project' | 'settings';
-type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'schedules' | 'claude';
+type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'claude';
 
 const MIN_BOTTOM_PANEL_HEIGHT = 100;
 const MAX_BOTTOM_PANEL_RATIO = 0.5;
@@ -262,7 +262,6 @@ function App() {
     'tab-skills': () => { if (currentProjectId) { setActiveTab('skills'); setCurrentView('project'); } },
     'tab-agents': () => { if (currentProjectId) { setActiveTab('agents'); setCurrentView('project'); } },
     'tab-teams': () => { if (currentProjectId) { setActiveTab('teams'); setCurrentView('project'); } },
-    'tab-schedules': () => { if (currentProjectId) { setActiveTab('schedules'); setCurrentView('project'); } },
     'toggle-terminal': () => setBottomPanelVisible(v => !v),
     'toggle-sidebar': () => setThreadsOpen(v => !v),
     'layout-single': () => handleLayoutChange('single'),
@@ -288,7 +287,6 @@ function App() {
     { id: 'nav-skills', label: 'Skills', category: 'Navigation', shortcut: '\u23189', keywords: ['pm', 'abilities', 'lightning'], action: () => { if (currentProjectId) { setActiveTab('skills'); setCurrentView('project'); } } },
     { id: 'nav-agents', label: 'Agents', category: 'Navigation', shortcut: '\u23180', keywords: ['ai', 'assistant', 'automation'], action: () => { if (currentProjectId) { setActiveTab('agents'); setCurrentView('project'); } } },
     { id: 'nav-teams', label: 'Teams', category: 'Navigation', shortcut: '\u2318\u21E7T', keywords: ['multi-agent', 'workflow', 'orchestration', 'group'], action: () => { if (currentProjectId) { setActiveTab('teams'); setCurrentView('project'); } } },
-    { id: 'nav-schedules', label: 'Schedules', category: 'Navigation', shortcut: '\u2318\u21E7S', keywords: ['cron', 'interval', 'timer', 'automated'], action: () => { if (currentProjectId) { setActiveTab('schedules'); setCurrentView('project'); } } },
     { id: 'panel-tracing', label: 'Tracing', category: 'Panels', keywords: ['spans', 'observability', 'trace', 'debug'], action: () => { setBottomPanelVisible(true); setBottomPanelTab('tracing'); } },
     { id: 'panel-terminal', label: 'Toggle Terminal', category: 'Panels', shortcut: '\u2318`', action: () => setBottomPanelVisible(v => !v) },
     { id: 'panel-threads', label: 'Toggle Projects', category: 'Panels', shortcut: '\u2318B', action: () => setThreadsOpen(v => !v) },
@@ -660,26 +658,6 @@ function App() {
             } catch { /* ignore */ }
           }
         }}
-        onToggleSchedules={async () => {
-          if (currentProjectId) {
-            setActiveTab('schedules');
-            setCurrentView('project');
-          } else {
-            try {
-              let projects = await projectsAPI.list();
-              let targetId: string;
-              if (!projects || projects.length === 0) {
-                const np = await projectsAPI.create('My First Project');
-                targetId = np.id;
-              } else {
-                targetId = projects[0].id;
-              }
-              setCurrentProjectId(targetId);
-              setActiveTab('schedules');
-              setCurrentView('project');
-            } catch { /* ignore */ }
-          }
-        }}
         onSettingsClick={handleSettingsClick}
         onHomeClick={handleHomeClick}
         threadsOpen={threadsOpen}
@@ -694,7 +672,6 @@ function App() {
         skillsActive={activeTab === 'skills' && currentView === 'project'}
         agentsActive={activeTab === 'agents' && currentView === 'project'}
         teamsActive={activeTab === 'teams' && currentView === 'project'}
-        schedulesActive={activeTab === 'schedules' && currentView === 'project'}
         isSettings={currentView === 'settings'}
         isHome={currentView === 'welcome'}
       />
