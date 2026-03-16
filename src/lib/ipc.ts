@@ -722,6 +722,46 @@ export const marketplaceAPI = {
   async confirmImportPrompt(mdContent: string, conflictAction: ConflictAction): Promise<ImportResult> {
     return await invoke('confirm_import_prompt', { mdContent, conflictAction });
   },
+
+  async exportSkill(id: string): Promise<string> {
+    return await invoke('export_skill', { id });
+  },
+
+  async exportSkillsBatch(ids: string[]): Promise<BatchExportResult[]> {
+    return await invoke('export_skills_batch', { ids });
+  },
+
+  async exportAllSkills(): Promise<BatchExportResult[]> {
+    return await invoke('export_all_skills');
+  },
+
+  async previewImportSkill(mdContent: string): Promise<ImportPreview> {
+    return await invoke('preview_import_skill', { mdContent });
+  },
+
+  async confirmImportSkill(mdContent: string, conflictAction: ConflictAction): Promise<ImportResult> {
+    return await invoke('confirm_import_skill', { mdContent, conflictAction });
+  },
+
+  async exportAgent(id: string): Promise<string> {
+    return await invoke('export_agent', { id });
+  },
+
+  async exportAgentsBatch(ids: string[]): Promise<BatchExportResult[]> {
+    return await invoke('export_agents_batch', { ids });
+  },
+
+  async exportAllAgents(): Promise<BatchExportResult[]> {
+    return await invoke('export_all_agents');
+  },
+
+  async previewImportAgent(mdContent: string): Promise<ImportPreview> {
+    return await invoke('preview_import_agent', { mdContent });
+  },
+
+  async confirmImportAgent(mdContent: string, conflictAction: ConflictAction): Promise<ImportResult> {
+    return await invoke('confirm_import_agent', { mdContent, conflictAction });
+  },
 };
 
 export const workflowsAPI = {

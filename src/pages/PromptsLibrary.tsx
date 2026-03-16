@@ -4,21 +4,10 @@ import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import { SavedPrompt, ImportPreview, ConflictAction, BatchExportResult } from '../lib/types';
 import { savedPromptsAPI, marketplaceAPI } from '../lib/ipc';
 import PromptEditorModal from '../components/PromptEditorModal';
+import PromptCategoryManager, { getAllPromptCategories } from '../components/PromptCategoryManager';
 import ImportPreviewDialog from '../components/ImportPreviewDialog';
 import BatchExportDialog from '../components/BatchExportDialog';
 import BatchImportDialog, { BatchImportItem } from '../components/BatchImportDialog';
-
-const PROMPT_CATEGORIES = [
-  { id: 'all', label: 'All' },
-  { id: 'prd', label: 'PRD' },
-  { id: 'analysis', label: 'Analysis' },
-  { id: 'stories', label: 'Stories' },
-  { id: 'communication', label: 'Communication' },
-  { id: 'data', label: 'Data' },
-  { id: 'prioritization', label: 'Prioritization' },
-  { id: 'strategy', label: 'Strategy' },
-  { id: 'general', label: 'General' },
-];
 
 type SortOption = 'most-used' | 'recent' | 'alpha' | 'favorites';
 
@@ -45,6 +34,10 @@ export default function PromptsLibrary({ projectId: _projectId, onUsePrompt }: P
   const [importMdContent, setImportMdContent] = useState('');
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [promptCategories, setPromptCategories] = useState(getAllPromptCategories());
+
+  const refreshCategories = () => setPromptCategories(getAllPromptCategories());
 
   const loadPrompts = useCallback(async () => {
     setLoading(true);
@@ -230,6 +223,12 @@ export default function PromptsLibrary({ projectId: _projectId, onUsePrompt }: P
               Export
             </button>
             <button
+              onClick={() => setShowCategoryManager(true)}
+              className="px-3 py-1.5 text-xs text-codex-text-secondary hover:text-codex-text-primary bg-codex-surface border border-codex-border rounded-md transition-colors"
+            >
+              Categories
+            </button>
+            <button
               onClick={() => { setEditingPrompt(null); setShowEditor(true); }}
               className="px-3 py-1.5 text-xs text-white bg-codex-accent hover:bg-codex-accent/80 rounded-md transition-colors"
             >
@@ -269,7 +268,17 @@ export default function PromptsLibrary({ projectId: _projectId, onUsePrompt }: P
         </div>
 
         <div className="flex gap-1 flex-wrap">
-          {PROMPT_CATEGORIES.map(cat => (
+          <button
+            onClick={() => setSelectedCategory('all')}
+            className={`px-3 py-1 text-xs rounded-full transition-colors ${
+              selectedCategory === 'all'
+                ? 'bg-codex-accent text-white'
+                : 'bg-codex-surface text-codex-text-secondary hover:text-codex-text-primary border border-codex-border'
+            }`}
+          >
+            All
+          </button>
+          {promptCategories.map(cat => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
@@ -280,7 +289,7 @@ export default function PromptsLibrary({ projectId: _projectId, onUsePrompt }: P
               }`}
             >
               {cat.label}
-              {cat.id !== 'all' && categoryStats[cat.id] ? ` (${categoryStats[cat.id]})` : ''}
+              {categoryStats[cat.id] ? ` (${categoryStats[cat.id]})` : ''}
             </button>
           ))}
         </div>
@@ -439,9 +448,16 @@ export default function PromptsLibrary({ projectId: _projectId, onUsePrompt }: P
         />
       )}
 
+      {showCategoryManager && (
+        <PromptCategoryManager
+          onClose={() => setShowCategoryManager(false)}
+          onChanged={() => { refreshCategories(); loadPrompts(); }}
+        />
+      )}
+
       {variablePrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.95)' }}>
-          <div className="w-full max-w-lg rounded-lg border border-codex-border shadow-2xl bg-codex-bg">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-lg rounded-lg border border-codex-border shadow-2xl bg-codex-sidebar">
             <div className="px-5 pt-5 pb-3 border-b border-codex-border/50">
               <h3 className="text-sm font-semibold text-codex-text-primary">{variablePrompt.name}</h3>
               <p className="text-[10px] text-codex-text-muted mt-1">Fill in the variables below, then send to chat.</p>

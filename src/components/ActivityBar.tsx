@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'schedules' | 'claude';
+type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'schedules' | 'claude';
 
 interface ActivityBarProps {
   activeTab: Tab;
@@ -15,7 +15,6 @@ interface ActivityBarProps {
   onToggleOutputs: () => void;
   onToggleSkills: () => void;
   onToggleAgents: () => void;
-  onToggleTeams: () => void;
   onSettingsClick: () => void;
   onHomeClick: () => void;
   threadsOpen: boolean;
@@ -29,13 +28,12 @@ interface ActivityBarProps {
   outputsActive: boolean;
   skillsActive: boolean;
   agentsActive: boolean;
-  teamsActive: boolean;
   isSettings: boolean;
   isHome: boolean;
 }
 
 export default function ActivityBar({
-  onToggleThreads,
+  onToggleThreads: _onToggleThreads,
   onToggleTerminal,
   onToggleClaude,
   onToggleChat,
@@ -46,10 +44,9 @@ export default function ActivityBar({
   onToggleOutputs,
   onToggleSkills,
   onToggleAgents,
-  onToggleTeams,
   onSettingsClick,
   onHomeClick,
-  threadsOpen,
+  threadsOpen: _threadsOpen,
   terminalActive,
   claudeActive,
   chatActive,
@@ -60,7 +57,6 @@ export default function ActivityBar({
   outputsActive,
   skillsActive,
   agentsActive,
-  teamsActive,
   isSettings,
   isHome,
 }: ActivityBarProps) {
@@ -106,19 +102,8 @@ export default function ActivityBar({
       className="flex flex-col items-center flex-shrink-0 border-r border-codex-border bg-codex-sidebar"
       style={{ width: '48px' }}
     >
-      {/* Top icons */}
-      <div className="flex flex-col items-center gap-0.5 pt-1">
-        <IconButton id="threads" title="Projects" active={threadsOpen} onClick={onToggleThreads}>
-          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
-          </svg>
-        </IconButton>
-      </div>
-
-      <div className="w-6 border-t border-codex-border my-1.5" />
-
       {/* Utility icons */}
-      <div className="flex flex-col items-center gap-0.5">
+      <div className="flex flex-col items-center gap-0.5 pt-1">
         <IconButton id="home" title="Home" active={isHome} onClick={onHomeClick}>
           <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
@@ -184,12 +169,6 @@ export default function ActivityBar({
         <IconButton id="agents" title="Agents" active={agentsActive} onClick={onToggleAgents}>
           <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-          </svg>
-        </IconButton>
-
-        <IconButton id="teams" title="Teams" active={teamsActive} onClick={onToggleTeams}>
-          <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
           </svg>
         </IconButton>
 

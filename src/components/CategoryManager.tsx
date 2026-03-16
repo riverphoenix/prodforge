@@ -3,9 +3,23 @@ import { frameworkCategoriesAPI, frameworkDefsAPI } from '../lib/ipc';
 import { FrameworkCategory } from '../lib/types';
 import { invalidateCache } from '../lib/frameworks';
 
+interface CategoryAPI {
+  list: () => Promise<Omit<FrameworkCategory, 'frameworks'>[]>;
+  create: (name: string, description: string, icon: string) => Promise<unknown>;
+  update: (id: string, name: string, description: string, icon: string) => Promise<unknown>;
+  delete: (id: string) => Promise<void>;
+}
+
+interface EntityAPI {
+  list: () => Promise<{ category: string }[]>;
+}
+
 interface CategoryManagerProps {
   onClose: () => void;
   onChanged: () => void;
+  categoryAPI?: CategoryAPI;
+  entityAPI?: EntityAPI;
+  entityLabel?: string;
 }
 
 const EMOJI_OPTIONS = [
@@ -14,7 +28,13 @@ const EMOJI_OPTIONS = [
   '⚙️', '🔬', '📉', '🏆', '🔑', '💬', '🎪', '🌟', '🧩', '⏱️',
 ];
 
-export default function CategoryManager({ onClose, onChanged }: CategoryManagerProps) {
+export default function CategoryManager({
+  onClose,
+  onChanged,
+  categoryAPI = frameworkCategoriesAPI,
+  entityAPI = frameworkDefsAPI as unknown as EntityAPI,
+  entityLabel = 'frameworks',
+}: CategoryManagerProps) {
   const [categories, setCategories] = useState<Omit<FrameworkCategory, 'frameworks'>[]>([]);
   const [frameworkCounts, setFrameworkCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -29,13 +49,13 @@ export default function CategoryManager({ onClose, onChanged }: CategoryManagerP
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cats, allFw] = await Promise.all([
-        frameworkCategoriesAPI.list(),
-        frameworkDefsAPI.list(),
+      const [cats, allEntities] = await Promise.all([
+        categoryAPI.list(),
+        entityAPI.list(),
       ]);
       setCategories(cats);
       const counts = new Map<string, number>();
-      allFw.forEach(fw => counts.set(fw.category, (counts.get(fw.category) || 0) + 1));
+      allEntities.forEach(e => counts.set(e.category, (counts.get(e.category) || 0) + 1));
       setFrameworkCounts(counts);
     } catch (err) {
       console.error('Failed to load categories:', err);
@@ -71,11 +91,11 @@ export default function CategoryManager({ onClose, onChanged }: CategoryManagerP
     setError(null);
     try {
       if (showCreate) {
-        await frameworkCategoriesAPI.create(editName.trim(), editDescription.trim(), editIcon);
+        await categoryAPI.create(editName.trim(), editDescription.trim(), editIcon);
       } else if (editingId) {
-        await frameworkCategoriesAPI.update(editingId, editName.trim(), editDescription.trim(), editIcon);
+        await categoryAPI.update(editingId, editName.trim(), editDescription.trim(), editIcon);
       }
-      invalidateCache();
+      if (entityLabel === 'frameworks') invalidateCache();
       setEditingId(null);
       setShowCreate(false);
       await loadData();
@@ -88,13 +108,13 @@ export default function CategoryManager({ onClose, onChanged }: CategoryManagerP
   const handleDelete = async (id: string) => {
     const count = frameworkCounts.get(id) || 0;
     if (count > 0) {
-      setError(`Cannot delete: ${count} framework(s) still reference this category`);
+      setError(`Cannot delete: ${count} ${entityLabel} still reference this category`);
       return;
     }
     setError(null);
     try {
-      await frameworkCategoriesAPI.delete(id);
-      invalidateCache();
+      await categoryAPI.delete(id);
+      if (entityLabel === 'frameworks') invalidateCache();
       await loadData();
       onChanged();
     } catch (err) {
@@ -109,9 +129,10 @@ export default function CategoryManager({ onClose, onChanged }: CategoryManagerP
   };
 
   return (
-    <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-codex-bg border border-codex-border rounded-lg shadow-xl w-[500px] max-h-[600px] overflow-hidden flex flex-col"
+        className="border border-codex-border rounded-lg shadow-xl w-[500px] max-h-[600px] overflow-hidden flex flex-col"
+        style={{ backgroundColor: '#252526' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -202,12 +223,6 @@ export default function CategoryManager({ onClose, onChanged }: CategoryManagerP
               {editingId === cat.id ? (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowIconPicker(!showIconPicker)}
-                      className="text-xl w-8 h-8 flex items-center justify-center bg-codex-bg border border-codex-border rounded hover:border-codex-accent transition-colors"
-                    >
-                      {editIcon}
-                    </button>
                     <input
                       type="text"
                       value={editName}
@@ -251,7 +266,6 @@ export default function CategoryManager({ onClose, onChanged }: CategoryManagerP
               ) : (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="text-xl">{cat.icon}</span>
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-medium text-codex-text-primary">{cat.name}</span>
@@ -261,7 +275,7 @@ export default function CategoryManager({ onClose, onChanged }: CategoryManagerP
                           </span>
                         )}
                         <span className="text-[10px] text-codex-text-muted">
-                          {frameworkCounts.get(cat.id) || 0} frameworks
+                          {frameworkCounts.get(cat.id) || 0} {entityLabel}
                         </span>
                       </div>
                       <p className="text-[10px] text-codex-text-muted mt-0.5">{cat.description}</p>

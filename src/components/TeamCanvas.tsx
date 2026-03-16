@@ -235,7 +235,7 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
           onClick={onRun}
           className="px-3 py-1 text-xs text-white bg-codex-accent hover:bg-codex-accent/80 rounded transition-colors"
         >
-          Run Team
+          Run Workflow
         </button>
       </div>
 
@@ -297,7 +297,7 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
         </div>
 
         <div
-          style={{ flex: 1, minHeight: 0 }}
+          style={{ flex: 1, minHeight: 0, width: '100%', height: '100%', position: 'relative' }}
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
         >
@@ -314,6 +314,7 @@ export default function TeamCanvas({ team, agents, onBack, onRun }: TeamCanvasPr
             fitView
             deleteKeyCode="Delete"
             proOptions={{ hideAttribution: true }}
+            style={{ width: '100%', height: '100%' }}
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#333" />
             <MiniMap

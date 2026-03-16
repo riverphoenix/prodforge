@@ -1,11 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { AgentDef, Skill, SkillCategory, AgentRun } from '../lib/types';
-import { agentsAPI, skillsAPI, skillCategoriesAPI, agentRunsAPI } from '../lib/ipc';
+import { save, open } from '@tauri-apps/plugin-dialog';
+import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
+import { AgentDef, Skill, SkillCategory, AgentRun, ImportPreview, ConflictAction, BatchExportResult } from '../lib/types';
+import { agentsAPI, skillsAPI, skillCategoriesAPI, agentRunsAPI, marketplaceAPI } from '../lib/ipc';
 import AgentEditor from '../components/AgentEditor';
 import AgentRunner from '../components/AgentRunner';
+import ImportPreviewDialog from '../components/ImportPreviewDialog';
+import BatchExportDialog from '../components/BatchExportDialog';
+import BatchImportDialog, { BatchImportItem } from '../components/BatchImportDialog';
 import { useAgentRunManager } from '../lib/agentRunManager';
 
-type SubView = 'list' | 'editor' | 'runner' | 'run-history';
+type SubView = 'list' | 'editor' | 'runner' | 'run-history' | 'manage';
 
 interface AgentsPageProps {
   projectId: string;
@@ -34,6 +39,14 @@ export default function AgentsPage({ projectId }: AgentsPageProps) {
   const [allRuns, setAllRuns] = useState<AgentRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<AgentRun | null>(null);
   const { activeRuns, cancelRun } = useAgentRunManager();
+
+  const [showImportPreview, setShowImportPreview] = useState(false);
+  const [showBatchExport, setShowBatchExport] = useState(false);
+  const [showBatchImport, setShowBatchImport] = useState(false);
+  const [batchImportItems, setBatchImportItems] = useState<BatchImportItem[]>([]);
+  const [importMdContent, setImportMdContent] = useState('');
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -112,6 +125,7 @@ export default function AgentsPage({ projectId }: AgentsPageProps) {
     if (agent.is_builtin) return;
     try {
       await agentsAPI.delete(agent.id);
+      if (selectedAgent?.id === agent.id) setSelectedAgent(null);
       await loadData();
     } catch (err) {
       console.error('Failed to delete agent:', err);
@@ -153,6 +167,65 @@ export default function AgentsPage({ projectId }: AgentsPageProps) {
 
   const handleViewRun = (run: AgentRun) => {
     setSelectedRun(run);
+  };
+
+  const handleExportSingle = async (agent: AgentDef) => {
+    try {
+      const content = await marketplaceAPI.exportAgent(agent.id);
+      const filePath = await save({
+        defaultPath: `${agent.name.toLowerCase().replace(/\s+/g, '-')}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (filePath) {
+        await writeTextFile(filePath, content);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export failed');
+    }
+  };
+
+  const handleImport = async () => {
+    try {
+      const selected = await open({
+        multiple: true,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (!selected) return;
+
+      const paths = Array.isArray(selected) ? selected : [selected];
+
+      if (paths.length === 1) {
+        const content = await readTextFile(paths[0] as string);
+        setImportMdContent(content);
+        const preview = await marketplaceAPI.previewImportAgent(content);
+        setImportPreview(preview);
+        setShowImportPreview(true);
+      } else {
+        const items: BatchImportItem[] = [];
+        for (const path of paths) {
+          const filename = (path as string).split('/').pop() || 'unknown.md';
+          try {
+            const content = await readTextFile(path as string);
+            const preview = await marketplaceAPI.previewImportAgent(content);
+            items.push({ filename, mdContent: content, preview, error: null, action: preview.already_exists ? 'copy' : 'copy', result: null });
+          } catch (err) {
+            items.push({ filename, mdContent: '', preview: null, error: err instanceof Error ? err.message : String(err), action: 'copy', result: null });
+          }
+        }
+        setBatchImportItems(items);
+        setShowBatchImport(true);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import failed');
+    }
+  };
+
+  const handleBatchExportSave = async (results: BatchExportResult[]) => {
+    const dir = await open({ directory: true });
+    if (!dir) throw new Error('No directory selected');
+    for (const item of results) {
+      await writeTextFile(`${dir}/${item.filename}`, item.content);
+    }
   };
 
   const runningCount = Array.from(activeRuns.values()).filter(r => r.status === 'running').length;
@@ -296,6 +369,138 @@ export default function AgentsPage({ projectId }: AgentsPageProps) {
     );
   }
 
+  if (subView === 'manage') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }} className="bg-codex-bg">
+        <div className="flex-shrink-0 px-6 py-4 border-b border-codex-border bg-codex-surface/50">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-codex-text-primary">Agent Manager</h2>
+              <p className="text-[10px] text-codex-text-muted mt-0.5">
+                {agents.length} agents
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleImport} className="px-3 py-1.5 text-xs text-codex-text-secondary hover:text-codex-text-primary bg-codex-surface border border-codex-border rounded transition-colors">Import</button>
+              <button onClick={() => setShowBatchExport(true)} className="px-3 py-1.5 text-xs text-codex-text-secondary hover:text-codex-text-primary bg-codex-surface border border-codex-border rounded transition-colors">Export</button>
+              <button onClick={handleNewAgent} className="px-3 py-1.5 text-xs text-white bg-codex-accent hover:bg-codex-accent-hover rounded transition-colors">+ New Agent</button>
+              <button onClick={() => setSubView('list')} className="px-2 py-1 text-xs text-codex-text-muted hover:text-codex-text-primary transition-colors">✕</button>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mx-6 mt-4 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400">
+            {error}
+            <button onClick={() => setError(null)} className="ml-2 text-red-300 hover:text-red-200">✕</button>
+          </div>
+        )}
+
+        <div className="flex-1 flex min-h-0">
+          <div className="w-72 flex-shrink-0 border-r border-codex-border overflow-y-auto p-3 space-y-1">
+            {agents.length === 0 ? (
+              <div className="text-xs text-codex-text-muted text-center py-8">No agents yet</div>
+            ) : agents.map(a => (
+              <button
+                key={a.id}
+                onClick={() => setSelectedAgent(a)}
+                className={`w-full text-left p-3 rounded-lg transition-colors ${selectedAgent?.id === a.id ? 'bg-codex-accent/15 border border-codex-accent/30' : 'hover:bg-codex-surface-hover border border-transparent'}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{a.icon}</span>
+                  <span className="text-xs font-medium text-codex-text-primary truncate">{a.name}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] text-codex-text-muted">{a.provider}</span>
+                  {a.is_builtin && <span className="text-[10px] px-1 py-0.5 bg-green-500/20 text-green-300 rounded">Built-in</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {selectedAgent ? (
+              <div className="p-6 space-y-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{selectedAgent.icon}</span>
+                      <h3 className="text-sm font-semibold text-codex-text-primary">{selectedAgent.name}</h3>
+                    </div>
+                    <p className="text-[10px] text-codex-text-muted mt-0.5">{selectedAgent.description}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      {selectedAgent.is_builtin && <span className="text-[10px] px-1.5 py-0.5 bg-codex-accent/20 text-codex-accent rounded">Built-in</span>}
+                      <span className="text-[10px] text-codex-text-muted">{selectedAgent.provider} / {selectedAgent.model}</span>
+                      <span className="text-[10px] text-codex-text-muted">temp: {selectedAgent.temperature}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {getAgentSkills(selectedAgent).length > 0 && (
+                  <div>
+                    <label className="block text-xs text-codex-text-secondary mb-1">Skills</label>
+                    <div className="flex flex-wrap gap-1">
+                      {getAgentSkills(selectedAgent).map(s => (
+                        <span key={s.id} className="text-[10px] px-2 py-0.5 bg-codex-bg/60 text-codex-text-muted rounded border border-codex-border/30">
+                          {s.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 pt-2 border-t border-codex-border">
+                  <button onClick={() => handleEditAgent(selectedAgent)} className="px-3 py-1.5 text-xs text-white bg-codex-accent hover:bg-codex-accent-hover rounded transition-colors">Edit</button>
+                  <button onClick={() => handleRunAgent(selectedAgent)} className="px-3 py-1.5 text-xs text-codex-accent hover:text-codex-accent/80 bg-codex-surface border border-codex-border rounded transition-colors">Run</button>
+                  <button onClick={() => handleDuplicate(selectedAgent)} className="px-3 py-1.5 text-xs text-codex-text-secondary hover:text-codex-text-primary bg-codex-surface border border-codex-border rounded transition-colors">Duplicate</button>
+                  <button onClick={() => handleExportSingle(selectedAgent)} className="px-3 py-1.5 text-xs text-codex-text-secondary hover:text-codex-text-primary bg-codex-surface border border-codex-border rounded transition-colors">Export</button>
+                  {!selectedAgent.is_builtin && (
+                    <button onClick={() => handleDelete(selectedAgent)} className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300 bg-codex-surface border border-red-500/30 rounded transition-colors">Delete</button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs text-codex-text-secondary mb-2">System Instructions</label>
+                  <div className="bg-codex-surface/40 border border-codex-border rounded p-3 text-xs text-codex-text-muted max-h-48 overflow-y-auto whitespace-pre-wrap font-mono">
+                    {selectedAgent.system_instructions.substring(0, 500)}
+                    {selectedAgent.system_instructions.length > 500 && '...'}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-codex-border">
+                  <div className="grid grid-cols-2 gap-2 text-[10px] text-codex-text-muted">
+                    <div>Created: {new Date(selectedAgent.created_at * 1000).toLocaleDateString()}</div>
+                    <div>Updated: {new Date(selectedAgent.updated_at * 1000).toLocaleDateString()}</div>
+                    <div>Used: {selectedAgent.usage_count}x</div>
+                    <div>Max tokens: {selectedAgent.max_tokens}</div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center max-w-md px-8">
+                  <div className="text-3xl mb-3">🤖</div>
+                  <h3 className="text-sm font-semibold text-codex-text-primary mb-1">Select an agent</h3>
+                  <p className="text-xs text-codex-text-secondary">Choose an agent from the list to view details or edit</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {showImportPreview && importPreview && (
+          <ImportPreviewDialog preview={importPreview} onConfirm={async (action: ConflictAction) => { const result = await marketplaceAPI.confirmImportAgent(importMdContent, action); await loadData(); return result; }} onClose={() => { setShowImportPreview(false); setImportPreview(null); setImportMdContent(''); }} />
+        )}
+        {showBatchExport && (
+          <BatchExportDialog mode="agents" items={agents} onExport={(ids) => marketplaceAPI.exportAgentsBatch(ids)} onSaveFiles={handleBatchExportSave} onClose={() => setShowBatchExport(false)} />
+        )}
+        {showBatchImport && (
+          <BatchImportDialog items={batchImportItems} onConfirm={(mdContent, action) => marketplaceAPI.confirmImportAgent(mdContent, action)} onClose={() => setShowBatchImport(false)} onDone={() => { loadData(); }} />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }} className="bg-codex-bg">
       <div style={{ flexShrink: 0 }} className="px-8 pt-8 pb-4">
@@ -310,6 +515,25 @@ export default function AgentsPage({ projectId }: AgentsPageProps) {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleImport}
+              className="px-3 py-1.5 text-xs text-codex-text-secondary hover:text-codex-text-primary bg-codex-surface border border-codex-border rounded-md transition-colors"
+            >
+              Import
+            </button>
+            <button
+              onClick={() => setShowBatchExport(true)}
+              className="px-3 py-1.5 text-xs text-codex-text-secondary hover:text-codex-text-primary bg-codex-surface border border-codex-border rounded-md transition-colors"
+            >
+              Export
+            </button>
+            <button
+              onClick={() => setSubView('manage')}
+              className="px-3 py-1.5 text-xs text-codex-text-secondary hover:text-codex-text-primary bg-codex-surface border border-codex-border rounded-md transition-colors"
+              title="Manage agents"
+            >
+              Manage
+            </button>
             <button
               onClick={handleViewRunHistory}
               className="px-3 py-1.5 text-xs text-codex-text-secondary hover:text-codex-text-primary bg-codex-surface border border-codex-border rounded-md transition-colors flex items-center gap-1.5"
@@ -416,7 +640,6 @@ export default function AgentsPage({ projectId }: AgentsPageProps) {
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2 flex-1 mr-2">
-                      <span className="text-lg">{agent.icon}</span>
                       <h3 className="text-sm font-semibold text-codex-text-primary group-hover:text-codex-accent transition-colors">
                         {agent.name}
                       </h3>
@@ -528,6 +751,16 @@ export default function AgentsPage({ projectId }: AgentsPageProps) {
           </div>
         )}
       </div>
+
+      {showImportPreview && importPreview && (
+        <ImportPreviewDialog preview={importPreview} onConfirm={async (action: ConflictAction) => { const result = await marketplaceAPI.confirmImportAgent(importMdContent, action); await loadData(); return result; }} onClose={() => { setShowImportPreview(false); setImportPreview(null); setImportMdContent(''); }} />
+      )}
+      {showBatchExport && (
+        <BatchExportDialog mode="agents" items={agents} onExport={(ids) => marketplaceAPI.exportAgentsBatch(ids)} onSaveFiles={handleBatchExportSave} onClose={() => setShowBatchExport(false)} />
+      )}
+      {showBatchImport && (
+        <BatchImportDialog items={batchImportItems} onConfirm={(mdContent, action) => marketplaceAPI.confirmImportAgent(mdContent, action)} onClose={() => setShowBatchImport(false)} onDone={() => { loadData(); }} />
+      )}
     </div>
   );
 }

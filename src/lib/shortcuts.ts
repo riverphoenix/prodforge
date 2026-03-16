@@ -18,7 +18,6 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'tab-workflows', keys: 'mod+8', label: '\u23188', description: 'Switch to Workflows', category: 'navigation' },
   { id: 'tab-skills', keys: 'mod+9', label: '\u23189', description: 'Switch to Skills', category: 'navigation' },
   { id: 'tab-agents', keys: 'mod+0', label: '\u23180', description: 'Switch to Agents', category: 'navigation' },
-  { id: 'tab-teams', keys: 'mod+shift+t', label: '\u2318\u21E7T', description: 'Switch to Teams', category: 'navigation' },
   { id: 'tab-schedules', keys: 'mod+shift+s', label: '\u2318\u21E7S', description: 'Switch to Schedules', category: 'navigation' },
   { id: 'toggle-terminal', keys: 'mod+`', label: '\u2318`', description: 'Toggle terminal panel', category: 'panel' },
   { id: 'toggle-sidebar', keys: 'mod+b', label: '\u2318B', description: 'Toggle sidebar', category: 'panel' },

@@ -2,17 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { SavedPrompt, PromptVariable } from '../lib/types';
 import { savedPromptsAPI } from '../lib/ipc';
 import PromptEditor from './PromptEditor';
-
-const CATEGORIES = [
-  { id: 'prd', label: 'PRD' },
-  { id: 'analysis', label: 'Analysis' },
-  { id: 'stories', label: 'Stories' },
-  { id: 'communication', label: 'Communication' },
-  { id: 'data', label: 'Data' },
-  { id: 'prioritization', label: 'Prioritization' },
-  { id: 'strategy', label: 'Strategy' },
-  { id: 'general', label: 'General' },
-];
+import { getAllPromptCategories } from './PromptCategoryManager';
 
 interface PromptEditorModalProps {
   prompt: SavedPrompt | null;
@@ -129,9 +119,9 @@ export default function PromptEditorModal({ prompt, onSave, onClose }: PromptEdi
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/95" onClick={onClose} />
-      <div className="w-[640px] border-l border-codex-border flex flex-col h-full overflow-hidden animate-slide-in-right bg-codex-bg">
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute right-0 top-0 bottom-0 w-[640px] border-l border-codex-border flex flex-col overflow-hidden animate-slide-in-right" style={{ backgroundColor: '#252526' }}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-codex-border">
           <h2 className="text-sm font-semibold text-codex-text-primary">
             {prompt ? 'Edit Prompt' : 'New Prompt'}
@@ -165,7 +155,7 @@ export default function PromptEditorModal({ prompt, onSave, onClose }: PromptEdi
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-3 py-2 bg-codex-surface border border-codex-border rounded text-codex-text-primary text-sm focus:outline-none focus:ring-1 focus:ring-codex-accent"
               >
-                {CATEGORIES.map(c => (
+                {getAllPromptCategories().map(c => (
                   <option key={c.id} value={c.id}>{c.label}</option>
                 ))}
               </select>

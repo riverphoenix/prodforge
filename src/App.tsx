@@ -18,13 +18,13 @@ import { THEMES, applyTheme, getThemeById } from './lib/themes';
 import FocusMode from './components/FocusMode';
 import QuickSwitcher from './components/QuickSwitcher';
 import { Command } from './lib/commandRegistry';
-import { Project, Conversation, FrameworkDefinition, SavedPrompt, FrameworkOutput, SearchResult, LLMProvider } from './lib/types';
+import { Conversation, FrameworkDefinition, SavedPrompt, FrameworkOutput, SearchResult, LLMProvider } from './lib/types';
 import ModelSelector from './components/ModelSelector';
 import ProdForgeIcon from './components/ProdForgeIcon';
 import AgentRunProvider from './components/AgentRunProvider';
 
 type View = 'welcome' | 'project' | 'settings';
-type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'claude';
+type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'claude';
 
 const MIN_BOTTOM_PANEL_HEIGHT = 100;
 const MAX_BOTTOM_PANEL_RATIO = 0.5;
@@ -64,6 +64,7 @@ function App() {
   const [welcomeInput, setWelcomeInput] = useState('');
   const [welcomeLoading, setWelcomeLoading] = useState(false);
   const [pendingChatMessage, setPendingChatMessage] = useState<string | null>(null);
+  const [pendingConversationId, setPendingConversationId] = useState<string | undefined>(undefined);
   const welcomeInputRef = useRef<HTMLTextAreaElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -76,7 +77,7 @@ function App() {
   const [searchLoading, setSearchLoading] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchPanelRef = useRef<HTMLDivElement>(null);
-  const [recentProjects, setRecentProjects] = useState<(Project & { conversations: Conversation[] })[]>([]);
+  const [recentChats, setRecentChats] = useState<(Conversation & { projectId: string })[]>([]);
   const [bottomPanelTab, setBottomPanelTab] = useState<string | undefined>(undefined);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('single');
   const [, setLayoutSizes] = useState<number[]>([100]);
@@ -89,18 +90,19 @@ function App() {
     getCurrentWindow().startDragging();
   }, []);
 
-  const loadRecentProjects = async () => {
+  const loadRecentChats = async () => {
     try {
       const projects = await projectsAPI.list();
       if (projects && projects.length > 0) {
-        const sorted = [...projects].sort((a, b) => b.updated_at - a.updated_at).slice(0, 1);
-        const withConvos = await Promise.all(
-          sorted.map(async (p) => {
+        const allChats: (Conversation & { projectId: string })[] = [];
+        await Promise.all(
+          projects.map(async (p) => {
             const convos = await conversationsAPI.list(p.id).catch(() => []);
-            return { ...p, conversations: convos.sort((a: Conversation, b: Conversation) => b.updated_at - a.updated_at).slice(0, 3) };
+            convos.forEach((c: Conversation) => allChats.push({ ...c, projectId: p.id }));
           })
         );
-        setRecentProjects(withConvos);
+        allChats.sort((a, b) => b.updated_at - a.updated_at);
+        setRecentChats(allChats.slice(0, 3));
       }
     } catch { /* ignore */ }
   };
@@ -110,7 +112,7 @@ function App() {
   }, [currentTheme]);
 
   useEffect(() => {
-    loadRecentProjects();
+    loadRecentChats();
   }, [currentView]);
 
   useEffect(() => {
@@ -142,19 +144,18 @@ function App() {
     });
   }, [currentProjectId, layoutMode, activeTab, bottomPanelVisible, bottomPanelHeight, bottomPanelTab, threadsOpen]);
 
-  const handleProjectSelect = async (projectId: string, tab: Tab = 'chat') => {
+  const handleProjectSelect = async (projectId: string, tab: Tab = 'chat', conversationId?: string) => {
     setCurrentProjectId(projectId);
+    if (conversationId) setPendingConversationId(conversationId);
     const ws = await loadWorkspaceState(projectId);
     if (ws) {
       setLayoutMode(ws.layoutMode || 'single');
-      setActiveTab((ws.activeTab as Tab) || tab);
       setBottomPanelVisible(ws.bottomPanelVisible ?? false);
       setBottomPanelHeight(ws.bottomPanelHeight || 250);
       setBottomPanelTab(ws.bottomPanelTab);
       setThreadsOpen(ws.threadsOpen ?? false);
-    } else {
-      setActiveTab(tab);
     }
+    setActiveTab(tab);
     setCurrentView('project');
   };
 
@@ -262,7 +263,6 @@ function App() {
     'tab-outputs': () => { if (currentProjectId) { setActiveTab('outputs'); setCurrentView('project'); } },
     'tab-skills': () => { if (currentProjectId) { setActiveTab('skills'); setCurrentView('project'); } },
     'tab-agents': () => { if (currentProjectId) { setActiveTab('agents'); setCurrentView('project'); } },
-    'tab-teams': () => { if (currentProjectId) { setActiveTab('teams'); setCurrentView('project'); } },
     'toggle-terminal': () => setBottomPanelVisible(v => !v),
     'toggle-sidebar': () => setThreadsOpen(v => !v),
     'layout-single': () => handleLayoutChange('single'),
@@ -287,10 +287,9 @@ function App() {
     { id: 'nav-outputs', label: 'Outputs', category: 'Navigation', shortcut: '\u23187', keywords: ['generated', 'library'], action: () => { if (currentProjectId) { setActiveTab('outputs'); setCurrentView('project'); } } },
     { id: 'nav-skills', label: 'Skills', category: 'Navigation', shortcut: '\u23189', keywords: ['pm', 'abilities', 'lightning'], action: () => { if (currentProjectId) { setActiveTab('skills'); setCurrentView('project'); } } },
     { id: 'nav-agents', label: 'Agents', category: 'Navigation', shortcut: '\u23180', keywords: ['ai', 'assistant', 'automation'], action: () => { if (currentProjectId) { setActiveTab('agents'); setCurrentView('project'); } } },
-    { id: 'nav-teams', label: 'Teams', category: 'Navigation', shortcut: '\u2318\u21E7T', keywords: ['multi-agent', 'workflow', 'orchestration', 'group'], action: () => { if (currentProjectId) { setActiveTab('teams'); setCurrentView('project'); } } },
     { id: 'panel-tracing', label: 'Tracing', category: 'Panels', keywords: ['spans', 'observability', 'trace', 'debug'], action: () => { setBottomPanelVisible(true); setBottomPanelTab('tracing'); } },
     { id: 'panel-terminal', label: 'Toggle Terminal', category: 'Panels', shortcut: '\u2318`', action: () => setBottomPanelVisible(v => !v) },
-    { id: 'panel-threads', label: 'Toggle Projects', category: 'Panels', shortcut: '\u2318B', action: () => setThreadsOpen(v => !v) },
+    { id: 'panel-threads', label: 'Toggle Threads', category: 'Panels', shortcut: '\u2318B', action: () => setThreadsOpen(v => !v) },
     { id: 'panel-focus', label: 'Toggle Focus Mode', category: 'Panels', shortcut: '\u2318\u21e7F', keywords: ['distraction', 'zen'], action: () => setFocusMode(v => !v) },
     ...THEMES.map(t => ({
       id: `theme-${t.id}`,
@@ -640,26 +639,6 @@ function App() {
             } catch { /* ignore */ }
           }
         }}
-        onToggleTeams={async () => {
-          if (currentProjectId) {
-            setActiveTab('teams');
-            setCurrentView('project');
-          } else {
-            try {
-              let projects = await projectsAPI.list();
-              let targetId: string;
-              if (!projects || projects.length === 0) {
-                const np = await projectsAPI.create('My First Project');
-                targetId = np.id;
-              } else {
-                targetId = projects[0].id;
-              }
-              setCurrentProjectId(targetId);
-              setActiveTab('teams');
-              setCurrentView('project');
-            } catch { /* ignore */ }
-          }
-        }}
         onSettingsClick={handleSettingsClick}
         onHomeClick={handleHomeClick}
         threadsOpen={threadsOpen}
@@ -673,7 +652,6 @@ function App() {
         outputsActive={activeTab === 'outputs' && currentView === 'project'}
         skillsActive={activeTab === 'skills' && currentView === 'project'}
         agentsActive={activeTab === 'agents' && currentView === 'project'}
-        teamsActive={activeTab === 'teams' && currentView === 'project'}
         isSettings={currentView === 'settings'}
         isHome={currentView === 'welcome'}
       />
@@ -689,6 +667,8 @@ function App() {
               onTabChange={setActiveTab}
               initialChatMessage={pendingChatMessage}
               onInitialChatMessageConsumed={() => setPendingChatMessage(null)}
+              initialConversationId={pendingConversationId}
+              onInitialConversationIdConsumed={() => setPendingConversationId(undefined)}
               initialProvider={homeProvider}
               initialModel={homeModel}
             />
@@ -778,60 +758,24 @@ function App() {
                     ))}
                   </div>
 
-                  {/* Recent Project */}
-                  {recentProjects.length > 0 && (
+                  {/* Recent Chats */}
+                  {recentChats.length > 0 && (
                     <div className="mb-8">
-                      <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-sm font-medium text-codex-text-secondary">Recent Project</h2>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const newProject = await projectsAPI.create('New Project');
-                              if (newProject?.id) handleProjectSelect(newProject.id, 'chat');
-                            } catch (e) { console.error(e); }
-                          }}
-                          className="text-[10px] text-codex-accent hover:text-codex-accent/80 active:scale-[0.96] transition-all duration-150"
-                        >
-                          + New Project
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {recentProjects.map(project => (
+                      <h2 className="text-sm font-medium text-codex-text-secondary mb-3">Recent Chats</h2>
+                      <div className="space-y-1">
+                        {recentChats.map(chat => (
                           <button
-                            key={project.id}
-                            onClick={() => handleProjectSelect(project.id, 'chat')}
-                            className="w-full text-left p-3 rounded-lg border border-codex-border/50 hover:border-codex-accent/40 hover:bg-codex-surface/30 active:scale-[0.99] transition-all duration-150 group cursor-pointer"
+                            key={chat.id}
+                            onClick={() => handleProjectSelect(chat.projectId, 'chat', chat.id)}
+                            className="w-full text-left px-3 py-2 rounded-lg border border-codex-border/50 hover:border-codex-accent/40 hover:bg-codex-surface/30 active:scale-[0.99] transition-all duration-150 group cursor-pointer flex items-center gap-3"
                           >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs font-medium text-codex-text-primary group-hover:text-codex-accent transition-colors">
-                                {project.name}
-                              </span>
-                              <span className="text-[9px] text-codex-text-muted">
-                                {formatRelativeTime(project.updated_at)}
-                              </span>
-                            </div>
-                            {project.description && (
-                              <div className="text-[10px] text-codex-text-muted truncate mb-1.5">
-                                {project.description}
-                              </div>
-                            )}
-                            {project.conversations.length > 0 && (
-                              <div className="space-y-0.5">
-                                {project.conversations.map(convo => (
-                                  <div
-                                    key={convo.id}
-                                    className="flex items-center gap-2 text-[10px] text-codex-text-muted"
-                                  >
-                                    <svg className="w-3 h-3 flex-shrink-0 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>
-                                    <span className="truncate">{convo.title || 'Untitled conversation'}</span>
-                                    <span className="flex-shrink-0 opacity-60">{convo.model}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {project.conversations.length === 0 && (
-                              <div className="text-[10px] text-codex-text-muted/50 italic">No conversations yet</div>
-                            )}
+                            <svg className="w-4 h-4 flex-shrink-0 text-codex-text-muted group-hover:text-codex-accent transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>
+                            <span className="text-xs text-codex-text-primary group-hover:text-codex-accent transition-colors truncate flex-1">
+                              {chat.title || 'Untitled conversation'}
+                            </span>
+                            <span className="text-[9px] text-codex-text-muted flex-shrink-0">
+                              {formatRelativeTime(chat.updated_at)}
+                            </span>
                           </button>
                         ))}
                       </div>

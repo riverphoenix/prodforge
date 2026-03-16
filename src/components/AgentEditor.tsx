@@ -1,13 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { AgentDef, Skill, SkillCategory, LLMProvider } from '../lib/types';
-import { agentsAPI } from '../lib/ipc';
-
-const PROVIDERS: { id: LLMProvider; label: string }[] = [
-  { id: 'anthropic', label: 'Anthropic' },
-  { id: 'openai', label: 'OpenAI' },
-  { id: 'google', label: 'Google' },
-  { id: 'ollama', label: 'Ollama' },
-];
+import { AgentDef, Skill, SkillCategory, LLMProvider, ProviderInfo } from '../lib/types';
+import { agentsAPI, settingsAPI } from '../lib/ipc';
+import { ProviderIcon, getModelLabel, PROVIDER_LABELS } from './ModelSelector';
 
 interface AgentEditorProps {
   agent: AgentDef | null;
@@ -31,6 +25,20 @@ export default function AgentEditor({ agent, skills, categories: _categories, on
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [skillSearch, setSkillSearch] = useState('');
+  const [configuredProviders, setConfiguredProviders] = useState<ProviderInfo[]>([]);
+  const [enabledModels, setEnabledModels] = useState<Record<string, string[]>>({});
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+
+  useEffect(() => {
+    settingsAPI.getAvailableProviders().then(providers => {
+      setConfiguredProviders(providers.filter(p => p.configured));
+    }).catch(() => {});
+    settingsAPI.get().then(s => {
+      if (s.enabled_models) {
+        try { setEnabledModels(JSON.parse(s.enabled_models)); } catch {}
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (agent) {
@@ -50,6 +58,13 @@ export default function AgentEditor({ agent, skills, categories: _categories, on
       setContextStrategy(agent.context_strategy);
     }
   }, [agent]);
+
+  const getModelsForProvider = (providerId: string): string[] => {
+    const enabled = enabledModels[providerId];
+    if (enabled && enabled.length > 0) return enabled;
+    const p = configuredProviders.find(cp => cp.id === providerId);
+    return p?.models || [];
+  };
 
   const filteredSkills = useMemo(() => {
     if (!skillSearch.trim()) return skills;
@@ -164,29 +179,53 @@ export default function AgentEditor({ agent, skills, categories: _categories, on
             />
           </div>
 
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="block text-xs text-codex-text-secondary mb-1">Provider</label>
-              <select
-                value={provider}
-                onChange={(e) => setProvider(e.target.value as LLMProvider)}
-                className="w-full px-3 py-2 bg-codex-surface border border-codex-border rounded text-sm text-codex-text-primary focus:outline-none focus:ring-1 focus:ring-codex-accent"
-              >
-                {PROVIDERS.map(p => (
-                  <option key={p.id} value={p.id}>{p.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs text-codex-text-secondary mb-1">Model</label>
-              <input
-                type="text"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder="claude-sonnet-4-20250514"
-                className="w-full px-3 py-2 bg-codex-surface border border-codex-border rounded text-sm text-codex-text-primary placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
-              />
-            </div>
+          <div className="relative">
+            <label className="block text-xs text-codex-text-secondary mb-1">Model</label>
+            <button
+              onClick={() => setShowModelDropdown(!showModelDropdown)}
+              className="w-full flex items-center gap-2 px-3 py-2 bg-codex-surface border border-codex-border rounded text-sm text-codex-text-primary focus:outline-none focus:ring-1 focus:ring-codex-accent"
+            >
+              <ProviderIcon provider={provider} size={14} />
+              <span className="flex-1 text-left truncate">{getModelLabel(model)}</span>
+              <svg className="w-3 h-3 text-codex-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showModelDropdown && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 border border-codex-border rounded-md shadow-lg max-h-60 overflow-y-auto" style={{ backgroundColor: '#252526' }}>
+                {configuredProviders.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-codex-text-muted">No providers configured</div>
+                ) : configuredProviders.map(p => {
+                  const models = getModelsForProvider(p.id);
+                  return (
+                    <div key={p.id}>
+                      <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] uppercase tracking-wider font-medium text-codex-text-muted border-b border-codex-border/50">
+                        <ProviderIcon provider={p.id as LLMProvider} size={12} />
+                        {PROVIDER_LABELS[p.id as LLMProvider] || p.name}
+                      </div>
+                      {models.map(m => (
+                        <button
+                          key={m}
+                          onClick={() => {
+                            setProvider(p.id as LLMProvider);
+                            setModel(m);
+                            setShowModelDropdown(false);
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors hover:bg-codex-surface-hover ${
+                            provider === p.id && model === m ? 'bg-codex-accent/15 text-codex-text-primary' : 'text-codex-text-secondary'
+                          }`}
+                        >
+                          <span className="w-3 text-center text-[10px]">
+                            {provider === p.id && model === m ? '✓' : ''}
+                          </span>
+                          {getModelLabel(m)}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="flex gap-4">

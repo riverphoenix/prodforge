@@ -4083,6 +4083,408 @@ pub async fn confirm_import_prompt(md_content: String, conflict_action: String, 
     })
 }
 
+// === Phase 12: Skill Export/Import ===
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SkillExportMeta {
+    pub r#type: String,
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub model_tier: String,
+    pub tools: String,
+    pub exported_at: String,
+    pub export_version: i32,
+}
+
+fn skill_to_markdown(skill: &SkillRow) -> Result<String, String> {
+    let meta = SkillExportMeta {
+        r#type: "skill".to_string(),
+        id: skill.id.clone(),
+        name: skill.name.clone(),
+        description: skill.description.clone(),
+        category: skill.category.clone(),
+        model_tier: skill.model_tier.clone(),
+        tools: skill.tools.clone(),
+        exported_at: Utc::now().to_rfc3339(),
+        export_version: 1,
+    };
+    let yaml = serde_yaml::to_string(&meta)
+        .map_err(|e| format!("Failed to serialize YAML: {}", e))?;
+
+    Ok(format!(
+        "---\n{}---\n\n# System Prompt\n\n{}",
+        yaml,
+        skill.system_prompt,
+    ))
+}
+
+#[tauri::command]
+pub async fn export_skill(id: String, app: tauri::AppHandle) -> Result<String, String> {
+    let conn = get_db_connection(&app)?;
+    let skill = conn.query_row(
+        &format!("SELECT {} FROM skills WHERE id = ?1", SKILL_COLUMNS),
+        params![&id],
+        row_to_skill,
+    ).map_err(|e| format!("Skill not found: {}", e))?;
+    skill_to_markdown(&skill)
+}
+
+#[tauri::command]
+pub async fn export_skills_batch(ids: Vec<String>, app: tauri::AppHandle) -> Result<Vec<BatchExportResult>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut results = Vec::new();
+    for id in &ids {
+        let skill = conn.query_row(
+            &format!("SELECT {} FROM skills WHERE id = ?1", SKILL_COLUMNS),
+            params![id],
+            row_to_skill,
+        ).map_err(|e| format!("Skill not found: {}", e))?;
+        let content = skill_to_markdown(&skill)?;
+        let filename = format!("{}.md", sanitize_filename(&skill.name));
+        results.push(BatchExportResult { filename, content });
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn export_all_skills(app: tauri::AppHandle) -> Result<Vec<BatchExportResult>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM skills ORDER BY sort_order, name", SKILL_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let skills: Vec<SkillRow> = stmt.query_map([], row_to_skill)
+        .map_err(|e| format!("Failed to query: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+    let mut results = Vec::new();
+    for skill in &skills {
+        let content = skill_to_markdown(skill)?;
+        let filename = format!("{}.md", sanitize_filename(&skill.name));
+        results.push(BatchExportResult { filename, content });
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn preview_import_skill(md_content: String, app: tauri::AppHandle) -> Result<ImportPreview, String> {
+    let (yaml_str, _body) = parse_yaml_frontmatter(&md_content)?;
+    let meta: SkillExportMeta = serde_yaml::from_str(&yaml_str)
+        .map_err(|e| format!("Invalid YAML front matter: {}", e))?;
+
+    if meta.r#type != "skill" {
+        return Err(format!("Expected type 'skill', got '{}'", meta.r#type));
+    }
+    if meta.export_version != 1 {
+        return Err(format!("Unsupported export version: {}", meta.export_version));
+    }
+    if meta.name.is_empty() { return Err("Missing required field: name".to_string()); }
+    if meta.id.is_empty() { return Err("Missing required field: id".to_string()); }
+
+    let conn = get_db_connection(&app)?;
+    let existing: Option<(String, bool)> = conn.query_row(
+        "SELECT id, is_builtin FROM skills WHERE id = ?1",
+        params![&meta.id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).optional().map_err(|e| format!("DB error: {}", e))?;
+
+    let already_exists = existing.is_some();
+    let is_builtin_conflict = existing.map_or(false, |(_, b)| b);
+
+    Ok(ImportPreview {
+        item_type: "skill".to_string(),
+        id: meta.id,
+        name: meta.name,
+        category: meta.category,
+        description: meta.description,
+        already_exists,
+        is_builtin_conflict,
+    })
+}
+
+#[tauri::command]
+pub async fn confirm_import_skill(md_content: String, conflict_action: String, app: tauri::AppHandle) -> Result<ImportResult, String> {
+    let (yaml_str, body) = parse_yaml_frontmatter(&md_content)?;
+    let meta: SkillExportMeta = serde_yaml::from_str(&yaml_str)
+        .map_err(|e| format!("Invalid YAML: {}", e))?;
+
+    let system_prompt_start = body.find("# System Prompt")
+        .ok_or("Missing '# System Prompt' section")?;
+    let system_prompt = body[system_prompt_start + 15..].trim().to_string();
+
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+
+    let existing: Option<bool> = conn.query_row(
+        "SELECT is_builtin FROM skills WHERE id = ?1",
+        params![&meta.id],
+        |row| row.get(0),
+    ).optional().map_err(|e| format!("DB error: {}", e))?;
+
+    let final_id: String;
+    let action: String;
+
+    match (existing, conflict_action.as_str()) {
+        (None, _) => {
+            final_id = meta.id.clone();
+            action = "created".to_string();
+            conn.execute(
+                "INSERT INTO skills (id, name, description, category, system_prompt, tools, output_schema, model_tier, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, 0, 0, 0, 999, ?8, ?9)",
+                params![&meta.id, &meta.name, &meta.description, &meta.category, &system_prompt, &meta.tools, &meta.model_tier, &now, &now],
+            ).map_err(|e| format!("Failed to insert skill: {}", e))?;
+        },
+        (Some(true), _) => {
+            final_id = format!("{}-imported", meta.id);
+            action = "copied".to_string();
+            conn.execute(
+                "INSERT INTO skills (id, name, description, category, system_prompt, tools, output_schema, model_tier, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, 0, 0, 0, 999, ?8, ?9)",
+                params![&final_id, &format!("{} (Imported)", meta.name), &meta.description, &meta.category, &system_prompt, &meta.tools, &meta.model_tier, &now, &now],
+            ).map_err(|e| format!("Failed to insert skill copy: {}", e))?;
+        },
+        (Some(false), "overwrite") => {
+            final_id = meta.id.clone();
+            action = "overwritten".to_string();
+            conn.execute(
+                "UPDATE skills SET name=?1, description=?2, category=?3, system_prompt=?4, tools=?5, model_tier=?6, updated_at=?7 WHERE id=?8",
+                params![&meta.name, &meta.description, &meta.category, &system_prompt, &meta.tools, &meta.model_tier, &now, &meta.id],
+            ).map_err(|e| format!("Failed to update skill: {}", e))?;
+        },
+        (Some(false), "skip") => {
+            return Ok(ImportResult {
+                success: true,
+                item_type: "skill".to_string(),
+                id: meta.id,
+                name: meta.name,
+                action: "skipped".to_string(),
+                error: None,
+            });
+        },
+        (Some(false), _) => {
+            final_id = format!("{}-imported", meta.id);
+            action = "copied".to_string();
+            conn.execute(
+                "INSERT INTO skills (id, name, description, category, system_prompt, tools, output_schema, model_tier, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, 0, 0, 0, 999, ?8, ?9)",
+                params![&final_id, &format!("{} (Imported)", meta.name), &meta.description, &meta.category, &system_prompt, &meta.tools, &meta.model_tier, &now, &now],
+            ).map_err(|e| format!("Failed to insert skill copy: {}", e))?;
+        },
+    }
+
+    Ok(ImportResult {
+        success: true,
+        item_type: "skill".to_string(),
+        id: final_id,
+        name: meta.name,
+        action,
+        error: None,
+    })
+}
+
+// === Agent Export/Import ===
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AgentExportMeta {
+    pub r#type: String,
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub model: String,
+    pub provider: String,
+    pub max_tokens: i32,
+    pub temperature: f64,
+    pub context_strategy: String,
+    pub skill_ids: String,
+    pub exported_at: String,
+    pub export_version: i32,
+}
+
+fn agent_to_markdown(agent: &AgentRow) -> Result<String, String> {
+    let meta = AgentExportMeta {
+        r#type: "agent".to_string(),
+        id: agent.id.clone(),
+        name: agent.name.clone(),
+        description: agent.description.clone(),
+        icon: agent.icon.clone(),
+        model: agent.model.clone(),
+        provider: agent.provider.clone(),
+        max_tokens: agent.max_tokens,
+        temperature: agent.temperature,
+        context_strategy: agent.context_strategy.clone(),
+        skill_ids: agent.skill_ids.clone(),
+        exported_at: Utc::now().to_rfc3339(),
+        export_version: 1,
+    };
+    let yaml = serde_yaml::to_string(&meta)
+        .map_err(|e| format!("Failed to serialize YAML: {}", e))?;
+
+    Ok(format!(
+        "---\n{}---\n\n# System Instructions\n\n{}",
+        yaml,
+        agent.system_instructions,
+    ))
+}
+
+#[tauri::command]
+pub async fn export_agent(id: String, app: tauri::AppHandle) -> Result<String, String> {
+    let conn = get_db_connection(&app)?;
+    let agent = conn.query_row(
+        &format!("SELECT {} FROM agents WHERE id = ?1", AGENT_COLUMNS),
+        params![&id],
+        row_to_agent,
+    ).map_err(|e| format!("Agent not found: {}", e))?;
+    agent_to_markdown(&agent)
+}
+
+#[tauri::command]
+pub async fn export_agents_batch(ids: Vec<String>, app: tauri::AppHandle) -> Result<Vec<BatchExportResult>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut results = Vec::new();
+    for id in &ids {
+        let agent = conn.query_row(
+            &format!("SELECT {} FROM agents WHERE id = ?1", AGENT_COLUMNS),
+            params![id],
+            row_to_agent,
+        ).map_err(|e| format!("Agent not found: {}", e))?;
+        let content = agent_to_markdown(&agent)?;
+        let filename = format!("{}.md", sanitize_filename(&agent.name));
+        results.push(BatchExportResult { filename, content });
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn export_all_agents(app: tauri::AppHandle) -> Result<Vec<BatchExportResult>, String> {
+    let conn = get_db_connection(&app)?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM agents ORDER BY sort_order, name", AGENT_COLUMNS)
+    ).map_err(|e| format!("Failed to prepare: {}", e))?;
+    let agents: Vec<AgentRow> = stmt.query_map([], row_to_agent)
+        .map_err(|e| format!("Failed to query: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+    let mut results = Vec::new();
+    for agent in &agents {
+        let content = agent_to_markdown(agent)?;
+        let filename = format!("{}.md", sanitize_filename(&agent.name));
+        results.push(BatchExportResult { filename, content });
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn preview_import_agent(md_content: String, app: tauri::AppHandle) -> Result<ImportPreview, String> {
+    let (yaml_str, _body) = parse_yaml_frontmatter(&md_content)?;
+    let meta: AgentExportMeta = serde_yaml::from_str(&yaml_str)
+        .map_err(|e| format!("Invalid YAML front matter: {}", e))?;
+
+    if meta.r#type != "agent" {
+        return Err(format!("Expected type 'agent', got '{}'", meta.r#type));
+    }
+    if meta.export_version != 1 {
+        return Err(format!("Unsupported export version: {}", meta.export_version));
+    }
+    if meta.name.is_empty() { return Err("Missing required field: name".to_string()); }
+    if meta.id.is_empty() { return Err("Missing required field: id".to_string()); }
+
+    let conn = get_db_connection(&app)?;
+    let existing: Option<(String, bool)> = conn.query_row(
+        "SELECT id, is_builtin FROM agents WHERE id = ?1",
+        params![&meta.id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).optional().map_err(|e| format!("DB error: {}", e))?;
+
+    let already_exists = existing.is_some();
+    let is_builtin_conflict = existing.map_or(false, |(_, b)| b);
+
+    Ok(ImportPreview {
+        item_type: "agent".to_string(),
+        id: meta.id,
+        name: meta.name,
+        category: "".to_string(),
+        description: meta.description,
+        already_exists,
+        is_builtin_conflict,
+    })
+}
+
+#[tauri::command]
+pub async fn confirm_import_agent(md_content: String, conflict_action: String, app: tauri::AppHandle) -> Result<ImportResult, String> {
+    let (yaml_str, body) = parse_yaml_frontmatter(&md_content)?;
+    let meta: AgentExportMeta = serde_yaml::from_str(&yaml_str)
+        .map_err(|e| format!("Invalid YAML: {}", e))?;
+
+    let system_instructions_start = body.find("# System Instructions")
+        .ok_or("Missing '# System Instructions' section")?;
+    let system_instructions = body[system_instructions_start + 21..].trim().to_string();
+
+    let conn = get_db_connection(&app)?;
+    let now = Utc::now().timestamp();
+
+    let existing: Option<bool> = conn.query_row(
+        "SELECT is_builtin FROM agents WHERE id = ?1",
+        params![&meta.id],
+        |row| row.get(0),
+    ).optional().map_err(|e| format!("DB error: {}", e))?;
+
+    let final_id: String;
+    let action: String;
+
+    match (existing, conflict_action.as_str()) {
+        (None, _) => {
+            final_id = meta.id.clone();
+            action = "created".to_string();
+            conn.execute(
+                "INSERT INTO agents (id, name, description, icon, system_instructions, skill_ids, model, provider, max_tokens, temperature, tools_config, context_strategy, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '{}', ?11, 0, 0, 0, 999, ?12, ?13)",
+                params![&meta.id, &meta.name, &meta.description, &meta.icon, &system_instructions, &meta.skill_ids, &meta.model, &meta.provider, &meta.max_tokens, &meta.temperature, &meta.context_strategy, &now, &now],
+            ).map_err(|e| format!("Failed to insert agent: {}", e))?;
+        },
+        (Some(true), _) => {
+            final_id = format!("{}-imported", meta.id);
+            action = "copied".to_string();
+            conn.execute(
+                "INSERT INTO agents (id, name, description, icon, system_instructions, skill_ids, model, provider, max_tokens, temperature, tools_config, context_strategy, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '{}', ?11, 0, 0, 0, 999, ?12, ?13)",
+                params![&final_id, &format!("{} (Imported)", meta.name), &meta.description, &meta.icon, &system_instructions, &meta.skill_ids, &meta.model, &meta.provider, &meta.max_tokens, &meta.temperature, &meta.context_strategy, &now, &now],
+            ).map_err(|e| format!("Failed to insert agent copy: {}", e))?;
+        },
+        (Some(false), "overwrite") => {
+            final_id = meta.id.clone();
+            action = "overwritten".to_string();
+            conn.execute(
+                "UPDATE agents SET name=?1, description=?2, icon=?3, system_instructions=?4, skill_ids=?5, model=?6, provider=?7, max_tokens=?8, temperature=?9, context_strategy=?10, updated_at=?11 WHERE id=?12",
+                params![&meta.name, &meta.description, &meta.icon, &system_instructions, &meta.skill_ids, &meta.model, &meta.provider, &meta.max_tokens, &meta.temperature, &meta.context_strategy, &now, &meta.id],
+            ).map_err(|e| format!("Failed to update agent: {}", e))?;
+        },
+        (Some(false), "skip") => {
+            return Ok(ImportResult {
+                success: true,
+                item_type: "agent".to_string(),
+                id: meta.id,
+                name: meta.name,
+                action: "skipped".to_string(),
+                error: None,
+            });
+        },
+        (Some(false), _) => {
+            final_id = format!("{}-imported", meta.id);
+            action = "copied".to_string();
+            conn.execute(
+                "INSERT INTO agents (id, name, description, icon, system_instructions, skill_ids, model, provider, max_tokens, temperature, tools_config, context_strategy, is_builtin, is_favorite, usage_count, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '{}', ?11, 0, 0, 0, 999, ?12, ?13)",
+                params![&final_id, &format!("{} (Imported)", meta.name), &meta.description, &meta.icon, &system_instructions, &meta.skill_ids, &meta.model, &meta.provider, &meta.max_tokens, &meta.temperature, &meta.context_strategy, &now, &now],
+            ).map_err(|e| format!("Failed to insert agent copy: {}", e))?;
+        },
+    }
+
+    Ok(ImportResult {
+        success: true,
+        item_type: "agent".to_string(),
+        id: final_id,
+        name: meta.name,
+        action,
+        error: None,
+    })
+}
+
 fn seed_workflows(conn: &Connection) -> Result<(), String> {
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM workflows", [], |row| row.get(0))
         .map_err(|e| format!("Failed to count workflows: {}", e))?;
@@ -7427,34 +7829,47 @@ fn seed_agents(conn: &Connection) -> Result<(), String> {
 
     let now = Utc::now().timestamp();
 
+    // Fix existing agents that have Lucide icon names instead of emojis
+    let icon_fixes = vec![
+        ("prd-writer-agent", "\u{1F4DD}"),      // 📝
+        ("strategy-advisor-agent", "\u{1F9ED}"), // 🧭
+        ("user-researcher-agent", "\u{1F52C}"),  // 🔬
+        ("competitive-intel-agent", "\u{1F3AF}"),// 🎯
+        ("growth-pm-agent", "\u{1F4C8}"),        // 📈
+        ("launch-captain-agent", "\u{1F680}"),   // 🚀
+    ];
+    for (id, emoji) in &icon_fixes {
+        conn.execute("UPDATE agents SET icon = ?1 WHERE id = ?2 AND is_builtin = 1", params![emoji, id]).ok();
+    }
+
     let agents: Vec<(&str, &str, &str, &str, &str, &str, &str, &str)> = vec![
         ("prd-writer-agent", "PRD Writer", "Create structured, comprehensive PRDs from problem statements",
-         "file-text",
+         "\u{1F4DD}",
          r#"["writing-prds","problem-definition","evaluating-trade-offs"]"#,
          "claude-sonnet-4-5", "anthropic",
          "You are a senior product manager who writes excellent PRDs. When given a problem or feature request, you first clearly define the problem, evaluate trade-offs, then produce a well-structured PRD. Ask clarifying questions when requirements are ambiguous. Output in markdown format."),
         ("strategy-advisor-agent", "Strategy Advisor", "Provide strategic analysis and product recommendations",
-         "compass",
+         "\u{1F9ED}",
          r#"["defining-product-vision","evaluating-trade-offs","prioritizing-roadmap","stakeholder-alignment"]"#,
          "claude-sonnet-4-5", "anthropic",
          "You are a seasoned product strategy advisor. Analyze situations holistically considering market dynamics, competitive landscape, user needs, and business goals. Provide actionable strategic recommendations backed by frameworks and data. Challenge assumptions constructively."),
         ("user-researcher-agent", "User Researcher", "Design research studies and synthesize insights",
-         "microscope",
+         "\u{1F52C}",
          r#"["user-interviews","analyzing-feedback","designing-surveys","problem-definition"]"#,
          "claude-sonnet-4-5", "anthropic",
          "You are an experienced user researcher. Help design research plans, create interview guides, design surveys, and synthesize findings into actionable insights. Apply rigorous research methodology while remaining practical. Focus on uncovering user needs, behaviors, and motivations."),
         ("competitive-intel-agent", "Competitive Intel", "Analyze competitive landscape and positioning",
-         "target",
+         "\u{1F3AF}",
          r#"["competitive-analysis","positioning-messaging","measuring-pmf"]"#,
          "claude-sonnet-4-5", "anthropic",
          "You are a competitive intelligence analyst. Analyze market landscapes, competitor strategies, and positioning opportunities. Provide SWOT analyses, feature comparisons, and strategic recommendations. Help identify differentiation opportunities and competitive threats."),
         ("growth-pm-agent", "Growth PM", "Design growth strategies and experiment plans",
-         "trending-up",
+         "\u{1F4C8}",
          r#"["growth-loops","retention-engagement","pricing-strategy","measuring-pmf"]"#,
          "claude-sonnet-4-5", "anthropic",
          "You are a growth product expert. Design growth loops, retention strategies, pricing models, and experiment plans. Apply data-driven thinking to identify growth opportunities. Balance short-term growth tactics with sustainable, long-term strategies. Focus on metrics that matter."),
         ("launch-captain-agent", "Launch Captain", "Plan and coordinate product launches",
-         "rocket",
+         "\u{1F680}",
          r#"["launch-marketing","shipping-products","managing-timelines","giving-presentations"]"#,
          "claude-sonnet-4-5", "anthropic",
          "You are a product launch expert. Create comprehensive launch plans covering positioning, timing, channels, success metrics, and cross-functional coordination. Manage launch timelines, prepare stakeholder communications, and design rollout strategies. Balance thoroughness with speed."),

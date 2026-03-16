@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
-import { FrameworkDefinition, SavedPrompt, BatchExportResult } from '../lib/types';
+import { FrameworkDefinition, SavedPrompt, Skill, AgentDef, BatchExportResult } from '../lib/types';
 
 interface BatchExportDialogProps {
-  mode: 'frameworks' | 'prompts';
-  items: (FrameworkDefinition | SavedPrompt)[];
+  mode: 'frameworks' | 'prompts' | 'skills' | 'agents';
+  items: (FrameworkDefinition | SavedPrompt | Skill | AgentDef)[];
   onExport: (ids: string[]) => Promise<BatchExportResult[]>;
   onSaveFiles: (results: BatchExportResult[]) => Promise<void>;
   onClose: () => void;
@@ -19,7 +19,7 @@ export default function BatchExportDialog({ mode, items, onExport, onSaveFiles, 
   const grouped = useMemo(() => {
     const map = new Map<string, typeof items>();
     for (const item of items) {
-      const cat = item.category;
+      const cat = 'category' in item ? (item as { category: string }).category : 'agents';
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(item);
     }
@@ -60,12 +60,13 @@ export default function BatchExportDialog({ mode, items, onExport, onSaveFiles, 
     }
   };
 
-  const label = mode === 'frameworks' ? 'Frameworks' : 'Prompts';
+  const label = mode === 'frameworks' ? 'Frameworks' : mode === 'skills' ? 'Skills' : mode === 'agents' ? 'Agents' : 'Prompts';
 
   return (
-    <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-codex-bg border border-codex-border rounded-lg shadow-xl w-[550px] max-h-[80vh] overflow-hidden flex flex-col"
+        className="border border-codex-border rounded-lg shadow-xl w-[550px] max-h-[80vh] overflow-hidden flex flex-col"
+        style={{ backgroundColor: '#252526' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-codex-border flex items-center justify-between">

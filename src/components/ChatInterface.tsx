@@ -416,6 +416,10 @@ export default function ChatInterface({
       ]);
       console.log('Conversation stats updated successfully');
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
       console.error('Failed to send message:', error);
       let errorMessage: string;
 
@@ -435,15 +439,6 @@ export default function ChatInterface({
 
       setError(errorMessage);
       emitError(errorMessage);
-      setFallbackProvider(null);
-
-      try {
-        const providers = await settingsAPI.getAvailableProviders();
-        const configured = providers.filter(p => p.configured && p.id !== selectedProvider);
-        if (configured.length > 0) {
-          setFallbackProvider(configured[0].id);
-        }
-      } catch { /* ignore */ }
     } finally {
       setLoading(false);
       abortRef.current = null;

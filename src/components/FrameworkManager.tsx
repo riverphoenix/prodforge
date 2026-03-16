@@ -31,6 +31,57 @@ export default function FrameworkManager({ onClose }: FrameworkManagerProps) {
   const [importMdContent, setImportMdContent] = useState('');
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editingMeta, setEditingMeta] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editIcon, setEditIcon] = useState('');
+  const [showIconPicker, setShowIconPicker] = useState(false);
+
+  const EMOJI_OPTIONS = [
+    '📊', '🎯', '🔍', '🛠️', '📈', '⚖️', '💡', '📋', '🗺️', '🚀',
+    '📐', '🏗️', '🔧', '📝', '📣', '🤝', '💎', '🧪', '📦', '🎨',
+    '⚙️', '🔬', '📉', '🏆', '🔑', '💬', '🎪', '🌟', '🧩', '⏱️',
+  ];
+
+  const startEditMeta = (fw: FrameworkDefinition) => {
+    setEditName(fw.name);
+    setEditCategory(fw.category);
+    setEditIcon(fw.icon);
+    setEditingMeta(true);
+    setShowIconPicker(false);
+  };
+
+  const cancelEditMeta = () => {
+    setEditingMeta(false);
+    setShowIconPicker(false);
+  };
+
+  const handleSaveMeta = async () => {
+    if (!selectedFramework || !editName.trim()) return;
+    const trimmed = editName.trim();
+    const isDuplicate = frameworks.some(
+      f => f.id !== selectedFramework.id && f.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      setError('A framework with this name already exists');
+      return;
+    }
+    setError(null);
+    try {
+      const updated = await frameworkDefsAPI.update(selectedFramework.id, {
+        name: trimmed,
+        category: editCategory,
+        icon: editIcon,
+      });
+      invalidateCache();
+      setSelectedFramework(updated);
+      setEditingMeta(false);
+      setShowIconPicker(false);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update');
+    }
+  };
 
   // Create form state
   const [newName, setNewName] = useState('');
@@ -298,9 +349,6 @@ export default function FrameworkManager({ onClose }: FrameworkManagerProps) {
                 {!fw.is_builtin && (
                   <span className="text-[10px] px-1 py-0.5 bg-purple-500/20 text-purple-300 rounded">Custom</span>
                 )}
-                {fw.supports_visuals && (
-                  <span className="text-[10px] px-1 py-0.5 bg-purple-500/10 text-purple-300/60 rounded">Visual</span>
-                )}
               </div>
             </button>
           ))}
@@ -431,23 +479,88 @@ export default function FrameworkManager({ onClose }: FrameworkManagerProps) {
             </div>
           ) : selectedFramework ? (
             <div className="p-6 space-y-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">{selectedFramework.icon}</span>
-                  <div>
-                    <h3 className="text-sm font-semibold text-codex-text-primary">{selectedFramework.name}</h3>
-                    <p className="text-[10px] text-codex-text-muted mt-0.5">{selectedFramework.description}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      {selectedFramework.is_builtin && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-codex-accent/20 text-codex-accent rounded">Built-in</span>
-                      )}
-                      <span className="text-[10px] text-codex-text-muted">
-                        {categories.find(c => c.id === selectedFramework.category)?.name || selectedFramework.category}
-                      </span>
+              {editingMeta ? (
+                <div className="space-y-3 p-3 bg-codex-surface/40 border border-codex-border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setShowIconPicker(!showIconPicker)}
+                      className="text-2xl w-10 h-10 flex items-center justify-center bg-codex-surface border border-codex-border rounded hover:border-codex-accent transition-colors"
+                    >
+                      {editIcon}
+                    </button>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Framework name"
+                      autoFocus
+                      className="flex-1 px-2 py-1.5 bg-codex-surface border border-codex-border rounded text-sm font-semibold text-codex-text-primary focus:outline-none focus:ring-1 focus:ring-codex-accent"
+                    />
+                  </div>
+                  {showIconPicker && (
+                    <div className="flex flex-wrap gap-1 p-2 bg-codex-surface border border-codex-border rounded">
+                      {EMOJI_OPTIONS.map(emoji => (
+                        <button
+                          key={emoji}
+                          onClick={() => { setEditIcon(emoji); setShowIconPicker(false); }}
+                          className={`w-8 h-8 flex items-center justify-center rounded hover:bg-codex-surface-hover transition-colors ${editIcon === emoji ? 'bg-codex-accent/20 ring-1 ring-codex-accent' : ''}`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
                     </div>
+                  )}
+                  <div>
+                    <label className="block text-[10px] text-codex-text-muted mb-1">Category</label>
+                    <select
+                      value={editCategory}
+                      onChange={(e) => setEditCategory(e.target.value)}
+                      className="w-full px-2 py-1.5 bg-codex-surface border border-codex-border rounded text-xs text-codex-text-primary focus:outline-none focus:ring-1 focus:ring-codex-accent"
+                    >
+                      {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={cancelEditMeta} className="px-3 py-1 text-xs text-codex-text-secondary hover:text-codex-text-primary">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveMeta}
+                      disabled={!editName.trim()}
+                      className="px-3 py-1 text-xs text-white bg-codex-accent hover:bg-codex-accent-hover rounded transition-colors disabled:opacity-50"
+                    >
+                      Save
+                    </button>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">{selectedFramework.icon}</span>
+                    <div>
+                      <h3 className="text-sm font-semibold text-codex-text-primary">{selectedFramework.name}</h3>
+                      <p className="text-[10px] text-codex-text-muted mt-0.5">{selectedFramework.description}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        {selectedFramework.is_builtin && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-codex-accent/20 text-codex-accent rounded">Built-in</span>
+                        )}
+                        <span className="text-[10px] text-codex-text-muted">
+                          {categories.find(c => c.id === selectedFramework.category)?.name || selectedFramework.category}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => startEditMeta(selectedFramework)}
+                    className="px-2 py-1 text-xs text-codex-text-secondary hover:text-codex-text-primary transition-colors"
+                    title="Edit name, category, icon"
+                  >
+                    ✎
+                  </button>
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex items-center gap-2 pt-2 border-t border-codex-border">

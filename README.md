@@ -22,19 +22,20 @@ ProdForge is a native desktop app that combines AI-driven frameworks, autonomous
 
 ## Features
 
-- **45+ PM Frameworks** — RICE, SWOT, JTBD, Business Model Canvas, Porter's Five Forces, and more. AI generates structured outputs from your project context.
+- **45+ PM Frameworks** — RICE, SWOT, JTBD, Business Model Canvas, Porter's Five Forces, and more. AI generates structured outputs from your project context. Manage categories, edit names/icons, and export as Markdown files.
 - **AI Chat** — Multi-provider conversations with OpenAI, Anthropic Claude, Google Gemini, and local Ollama models. Context-aware with project documents.
-- **30+ PM Skills** — Pre-built skills across Strategy, Research, Execution, Leadership, Growth, GTM, AI, and Career categories.
-- **6 AI Agents** — PRD Writer, Strategy Advisor, User Researcher, Competitive Intel, Growth PM, Launch Captain. Create custom agents with your own skills and system prompts.
+- **30+ PM Skills** — Pre-built skills across 8 categories (Strategy, Research, Execution, Leadership, Growth, GTM, AI, Career). Manage view with category sidebar, export/import as `.md` files, and per-skill provider+model selection.
+- **6 AI Agents** — PRD Writer, Strategy Advisor, User Researcher, Competitive Intel, Growth PM, Launch Captain. Create custom agents with skills and system prompts. Manage view with export/import as `.md` files, and combined provider+model dropdown showing only configured providers.
 - **Agent Teams** — Compose agents into teams with sequential, parallel, or conductor orchestration. Visual drag-and-drop canvas with React Flow.
 - **Claude Code Terminal** — Built-in PTY terminal with full Claude Code integration, UTF-8 support, and multiple tabs.
 - **Workflow Builder** — Chain frameworks and prompts into repeatable multi-step pipelines. Schedule with cron expressions.
-- **30+ Prompt Templates** — With `{variable}` substitution and auto-detection.
+- **30+ Prompt Templates** — With `{variable}` substitution and auto-detection. Category management, export as Markdown.
 - **Context Engine** — Upload PDFs, URLs, and Google Docs as AI context for every conversation and generation.
 - **File Explorer** — Hierarchical folders with Monaco code editor.
 - **Outputs Library** — Save, search, edit inline, and export generated frameworks.
 - **Git Versioning** — Auto-commit every output with diff viewer and rollback.
 - **Jira & Notion Export** — Push outputs directly to external tools.
+- **Marketplace Export/Import** — Export frameworks, prompts, skills, and agents as portable `.md` files with YAML frontmatter. Import with conflict detection and resolution.
 - **Analytics Dashboard** — Token usage trends, cost breakdowns, agent performance, CSV export.
 - **Tracing** — Hierarchical span recording with timeline visualization for all executions.
 - **Embedded AI Server** — The Python sidecar auto-launches inside the app. No manual setup required.
@@ -46,7 +47,7 @@ ProdForge is a native desktop app that combines AI-driven frameworks, autonomous
 | Desktop | Tauri v2 (Rust backend, WKWebView on macOS) |
 | Frontend | React 19, TypeScript, Tailwind CSS v4, Vite |
 | AI Sidecar | Python, FastAPI, Pydantic AI |
-| Database | SQLite (15+ tables, CASCADE deletes) |
+| Database | SQLite (30+ tables, CASCADE deletes) |
 | LLMs | OpenAI, Anthropic Claude, Google Gemini, Ollama |
 | Encryption | AES-256-GCM for API keys |
 | Versioning | libgit2 per-project repos |
@@ -172,7 +173,7 @@ Popular models: `llama3` (8B, fast), `llama3:70b` (70B, better quality), `mistra
 ```
 prodforge/
 ├── src/                    # React frontend
-│   ├── components/         # 50+ UI components
+│   ├── components/         # 60+ UI components
 │   ├── pages/              # Page views
 │   ├── lib/                # IPC wrappers, types, shortcuts
 │   ├── hooks/              # Custom React hooks
@@ -181,7 +182,7 @@ prodforge/
 ├── src-tauri/              # Rust backend
 │   └── src/
 │       ├── main.rs         # Entry point
-│       ├── lib.rs          # ~140 IPC command registrations
+│       ├── lib.rs          # ~240 IPC command registrations
 │       ├── commands.rs     # Commands, SQLite schema, business logic
 │       └── pty.rs          # Terminal PTY management
 ├── python-sidecar/         # Python FastAPI server

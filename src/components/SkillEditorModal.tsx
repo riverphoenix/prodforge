@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Skill, SkillCategory, ModelTier } from '../lib/types';
-import { skillsAPI } from '../lib/ipc';
+import { Skill, SkillCategory, LLMProvider } from '../lib/types';
+import { skillsAPI, settingsAPI } from '../lib/ipc';
+import { ProviderIcon, getModelLabel, PROVIDER_LABELS } from './ModelSelector';
 
 interface SkillEditorModalProps {
   skill: Skill | null;
@@ -13,29 +14,60 @@ export default function SkillEditorModal({ skill, categories, onSave, onClose }:
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
-  const [modelTier, setModelTier] = useState<ModelTier>('sonnet');
+  const [selectedProvider, setSelectedProvider] = useState<LLMProvider>('anthropic');
+  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-20250514');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [tools, setTools] = useState('[]');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [configuredProviders, setConfiguredProviders] = useState<{ id: string; name: string; models: string[] }[]>([]);
+  const [enabledModels, setEnabledModels] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    settingsAPI.getAvailableProviders().then(providers => {
+      setConfiguredProviders(providers.filter(p => p.configured));
+    }).catch(() => {});
+    settingsAPI.get().then(s => {
+      if (s.enabled_models) {
+        try { setEnabledModels(JSON.parse(s.enabled_models)); } catch {}
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (skill) {
       setName(skill.name);
       setDescription(skill.description);
       setCategory(skill.category);
-      setModelTier(skill.model_tier);
       setSystemPrompt(skill.system_prompt);
       setTools(skill.tools || '[]');
+      const modelTier = skill.model_tier;
+      if (modelTier.includes(':')) {
+        const [p, m] = modelTier.split(':', 2);
+        setSelectedProvider(p as LLMProvider);
+        setSelectedModel(m);
+      } else {
+        setSelectedProvider('anthropic');
+        setSelectedModel(modelTier);
+      }
     } else {
       setName('');
       setDescription('');
       setCategory(categories[0]?.name || '');
-      setModelTier('sonnet');
+      setSelectedProvider('anthropic');
+      setSelectedModel('claude-sonnet-4-20250514');
       setSystemPrompt('');
       setTools('[]');
     }
   }, [skill, categories]);
+
+  const getModelsForProvider = (providerId: string): string[] => {
+    const enabled = enabledModels[providerId];
+    if (enabled && enabled.length > 0) return enabled;
+    const p = configuredProviders.find(cp => cp.id === providerId);
+    return p?.models || [];
+  };
 
   const handleSave = async () => {
     if (!name.trim() || !systemPrompt.trim()) {
@@ -45,6 +77,7 @@ export default function SkillEditorModal({ skill, categories, onSave, onClose }:
 
     setSaving(true);
     setError(null);
+    const modelTier = `${selectedProvider}:${selectedModel}`;
     try {
       if (skill) {
         await skillsAPI.update(skill.id, {
@@ -75,8 +108,8 @@ export default function SkillEditorModal({ skill, categories, onSave, onClose }:
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95">
-      <div className="w-full max-w-2xl max-h-[85vh] rounded-lg border border-codex-border shadow-2xl flex flex-col bg-codex-bg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-2xl max-h-[85vh] rounded-lg border border-codex-border shadow-2xl flex flex-col" style={{ backgroundColor: '#252526' }}>
         <div className="px-5 pt-5 pb-3 border-b border-codex-border/50 flex-shrink-0">
           <h3 className="text-sm font-semibold text-codex-text-primary">
             {skill ? 'Edit Skill' : 'New Skill'}
@@ -115,29 +148,57 @@ export default function SkillEditorModal({ skill, categories, onSave, onClose }:
                 className="w-full px-3 py-2 bg-codex-surface border border-codex-border rounded text-sm text-codex-text-primary focus:outline-none focus:ring-1 focus:ring-codex-accent"
               >
                 {categories.map(cat => (
-                  <option key={cat.id} value={cat.name}>{cat.icon} {cat.name}</option>
+                  <option key={cat.id} value={cat.name}>{cat.name}</option>
                 ))}
               </select>
             </div>
-            <div className="flex-1">
-              <label className="block text-xs text-codex-text-secondary mb-1">Model Tier</label>
-              <div className="flex gap-2">
-                {(['haiku', 'sonnet', 'opus'] as ModelTier[]).map(tier => (
-                  <button
-                    key={tier}
-                    onClick={() => setModelTier(tier)}
-                    className={`flex-1 px-2 py-2 text-xs rounded border transition-colors ${
-                      modelTier === tier
-                        ? tier === 'opus' ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
-                        : tier === 'sonnet' ? 'bg-blue-500/20 border-blue-500/50 text-blue-300'
-                        : 'bg-green-500/20 border-green-500/50 text-green-300'
-                        : 'bg-codex-surface border-codex-border text-codex-text-secondary hover:text-codex-text-primary'
-                    }`}
-                  >
-                    {tier}
-                  </button>
-                ))}
-              </div>
+            <div className="flex-1 relative">
+              <label className="block text-xs text-codex-text-secondary mb-1">Model</label>
+              <button
+                onClick={() => setShowModelDropdown(!showModelDropdown)}
+                className="w-full flex items-center gap-2 px-3 py-2 bg-codex-surface border border-codex-border rounded text-sm text-codex-text-primary focus:outline-none focus:ring-1 focus:ring-codex-accent"
+              >
+                <ProviderIcon provider={selectedProvider} size={14} />
+                <span className="flex-1 text-left truncate">{getModelLabel(selectedModel)}</span>
+                <svg className="w-3 h-3 text-codex-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showModelDropdown && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 border border-codex-border rounded-md shadow-lg max-h-60 overflow-y-auto" style={{ backgroundColor: '#252526' }}>
+                  {configuredProviders.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-codex-text-muted">No providers configured</div>
+                  ) : configuredProviders.map(provider => {
+                    const models = getModelsForProvider(provider.id);
+                    return (
+                      <div key={provider.id}>
+                        <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] uppercase tracking-wider font-medium text-codex-text-muted border-b border-codex-border/50">
+                          <ProviderIcon provider={provider.id as LLMProvider} size={12} />
+                          {PROVIDER_LABELS[provider.id as LLMProvider] || provider.name}
+                        </div>
+                        {models.map(model => (
+                          <button
+                            key={model}
+                            onClick={() => {
+                              setSelectedProvider(provider.id as LLMProvider);
+                              setSelectedModel(model);
+                              setShowModelDropdown(false);
+                            }}
+                            className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors hover:bg-codex-surface-hover ${
+                              selectedProvider === provider.id && selectedModel === model ? 'bg-codex-accent/15 text-codex-text-primary' : 'text-codex-text-secondary'
+                            }`}
+                          >
+                            <span className="w-3 text-center text-[10px]">
+                              {selectedProvider === provider.id && selectedModel === model ? '✓' : ''}
+                            </span>
+                            {getModelLabel(model)}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 

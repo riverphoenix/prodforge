@@ -829,7 +829,7 @@ export default function Settings() {
 
       {/* Delete Confirmation Dialog */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50" onClick={handleDeleteCancel}>
+        <div className="fixed inset-0 bg-black flex items-center justify-center z-50" onClick={handleDeleteCancel}>
           <div className="bg-codex-surface rounded-lg p-6 max-w-sm mx-4 border border-codex-border" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-medium text-codex-text-primary mb-2">Delete {deleteTarget === 'openai' ? 'OpenAI' : deleteTarget === 'anthropic' ? 'Anthropic' : 'Google'} API Key?</h3>
             <p className="text-sm text-codex-text-secondary mb-6">

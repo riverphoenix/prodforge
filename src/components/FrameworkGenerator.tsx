@@ -983,7 +983,7 @@ export default function FrameworkGenerator({
 
       {/* Save Dialog */}
       {showSaveDialog && (
-        <div className="absolute inset-0 bg-black/95 flex items-center justify-center z-50">
+        <div className="absolute inset-0 bg-black flex items-center justify-center z-50">
           <div className="bg-codex-surface border border-codex-border rounded-lg p-6 w-96">
             <h3 className="text-sm font-semibold text-codex-text-primary mb-4">Save Framework Output</h3>
             <input

@@ -224,7 +224,7 @@ export default function ConversationHistory({
 
       {/* Custom Delete Confirmation Dialog */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50" onClick={handleDeleteCancel}>
+        <div className="fixed inset-0 bg-black flex items-center justify-center z-50" onClick={handleDeleteCancel}>
           <div className="rounded-lg p-6 max-w-md mx-4 shadow-2xl border border-codex-border bg-codex-surface" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-codex-text-primary mb-2">Delete Conversation?</h3>
             <p className="text-sm text-codex-text-secondary mb-6">

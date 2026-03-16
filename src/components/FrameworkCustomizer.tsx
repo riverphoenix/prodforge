@@ -85,9 +85,9 @@ export default function FrameworkCustomizer({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/95" onClick={onClose} />
-      <div className="w-[600px] bg-codex-bg border-l border-codex-border flex flex-col h-full overflow-hidden animate-slide-in-right">
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute right-0 top-0 bottom-0 w-[600px] bg-codex-sidebar border-l border-codex-border flex flex-col overflow-hidden animate-slide-in-right">
         {/* Header */}
         <div className="flex-shrink-0 px-6 py-4 border-b border-codex-border bg-codex-surface/50">
           <div className="flex items-center justify-between">

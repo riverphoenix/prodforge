@@ -677,7 +677,7 @@ export default function FileExplorer() {
 
       {/* Rename overlay */}
       {renamingPath && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setRenamingPath(null); setRenameValue(''); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black" onClick={() => { setRenamingPath(null); setRenameValue(''); }}>
           <div className="bg-codex-surface border border-codex-border rounded-lg p-4 shadow-xl w-80" onClick={e => e.stopPropagation()}>
             <div className="text-xs text-codex-text-secondary mb-2">Rename</div>
             <input

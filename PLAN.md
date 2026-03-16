@@ -38,6 +38,17 @@
 - Enhanced analytics with agent performance metrics and cost forecasting
 - Built-in Claude Code terminal with PTY, UTF-8 safe buffering, and Full Disk Access support
 
+### Phase 12: Manage Views, Export/Import & UI Polish
+- Framework Manager: inline editing of category, name, and icon with duplicate-name validation
+- Prompt Library: category management (create, edit, delete with usage guard), slide-in editor
+- Skills Library: manage view with category sidebar, export/import as `.md` files with YAML frontmatter, per-skill provider+model dropdown replacing model tier
+- Agents Page: manage view with detail panel, export/import as `.md` files (YAML frontmatter + system instructions body), combined provider+model dropdown showing only configured providers
+- Marketplace portability: all entity types (frameworks, prompts, skills, agents) export as portable Markdown with conflict detection on import
+- Built-in agent icons migrated from Lucide text names to emoji unicode
+- All modal/panel backgrounds guaranteed opaque with inline styles
+- Removed stale icon text strings from skill category UI displays
+- Background agent running with global state management
+
 ---
 
 ## Future Ideas

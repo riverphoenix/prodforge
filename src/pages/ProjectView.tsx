@@ -13,14 +13,13 @@ import PromptsLibrary from './PromptsLibrary';
 import FileExplorer from './FileExplorer';
 import SkillsLibrary from './SkillsLibrary';
 import AgentsPage from './AgentsPage';
-import AgentTeamsPage from './AgentTeamsPage';
 import ClaudeChat from '../components/ClaudeChat';
 
 const MIN_HISTORY_WIDTH = 180;
 const MAX_HISTORY_WIDTH = 400;
 const DEFAULT_HISTORY_WIDTH = 224;
 
-type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'teams' | 'claude';
+type Tab = 'documents' | 'chat' | 'frameworks' | 'prompts' | 'context' | 'outputs' | 'editor' | 'skills' | 'agents' | 'claude';
 
 interface ProjectViewProps {
   projectId: string;
@@ -28,16 +27,25 @@ interface ProjectViewProps {
   onTabChange: (tab: Tab) => void;
   initialChatMessage?: string | null;
   onInitialChatMessageConsumed?: () => void;
+  initialConversationId?: string;
+  onInitialConversationIdConsumed?: () => void;
   initialProvider?: LLMProvider;
   initialModel?: string;
 }
 
-export default function ProjectView({ projectId, activeTab, onTabChange, initialChatMessage, onInitialChatMessageConsumed, initialProvider, initialModel }: ProjectViewProps) {
+export default function ProjectView({ projectId, activeTab, onTabChange, initialChatMessage, onInitialChatMessageConsumed, initialConversationId, onInitialConversationIdConsumed, initialProvider, initialModel }: ProjectViewProps) {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(undefined);
+  const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(initialConversationId);
+
+  useEffect(() => {
+    if (initialConversationId) {
+      setCurrentConversationId(initialConversationId);
+      onInitialConversationIdConsumed?.();
+    }
+  }, [initialConversationId]);
   const [historyWidth, setHistoryWidth] = useState<number>(() => {
     const saved = localStorage.getItem('conversationHistoryWidth');
     return saved ? parseInt(saved, 10) : DEFAULT_HISTORY_WIDTH;
@@ -214,10 +222,6 @@ export default function ProjectView({ projectId, activeTab, onTabChange, initial
 
         {activeTab === 'agents' && (
           <AgentsPage projectId={projectId} />
-        )}
-
-        {activeTab === 'teams' && (
-          <AgentTeamsPage projectId={projectId} />
         )}
 
         {activeTab === 'claude' && (

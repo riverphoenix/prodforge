@@ -55,23 +55,36 @@ export default function AgentRunProvider({ children }: Props) {
           apiKey = await settingsAPI.getDecryptedAnthropicKey() || '';
         } else if (agent.provider === 'google') {
           apiKey = await settingsAPI.getDecryptedGoogleKey() || '';
-        } else {
+        } else if (agent.provider === 'openai') {
           apiKey = await settingsAPI.getDecryptedApiKey() || '';
         }
 
-        const response = await agentExecutionAPI.runStream({
-          agentId: agent.id,
-          projectId,
-          prompt: prompt.trim(),
-          skillId: skillId || undefined,
-          model: agent.model,
-          provider: agent.provider,
-          apiKey,
-          maxTokens: agent.max_tokens,
-          temperature: agent.temperature,
-          systemPrompt: agent.system_instructions,
-          skillPrompts,
-        });
+        if (!apiKey && agent.provider !== 'ollama') {
+          throw new Error(`No API key configured for ${agent.provider}. Go to Settings to add one.`);
+        }
+
+        let response: Response;
+        try {
+          response = await agentExecutionAPI.runStream({
+            agentId: agent.id,
+            projectId,
+            prompt: prompt.trim(),
+            skillId: skillId || undefined,
+            model: agent.model,
+            provider: agent.provider,
+            apiKey,
+            maxTokens: agent.max_tokens,
+            temperature: agent.temperature,
+            systemPrompt: agent.system_instructions,
+            skillPrompts,
+          });
+        } catch (fetchErr) {
+          const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+          if (msg === 'Load failed' || msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+            throw new Error('Cannot connect to the ProdForge sidecar server. It may not be running. Try restarting the app.');
+          }
+          throw fetchErr;
+        }
 
         if (!response.ok) {
           const errText = await response.text();

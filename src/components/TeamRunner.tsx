@@ -192,7 +192,7 @@ export default function TeamRunner({ team, agents: _agents, projectId, onBack }:
       await loadData();
     } catch (err) {
       if (!abort.signal.aborted) {
-        setError(err instanceof Error ? err.message : 'Failed to run team');
+        setError(err instanceof Error ? err.message : 'Failed to run workflow');
       }
     } finally {
       setIsRunning(false);

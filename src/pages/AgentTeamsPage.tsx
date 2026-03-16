@@ -126,7 +126,7 @@ export default function AgentTeamsPage({ projectId }: AgentTeamsPageProps) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }} className="bg-codex-bg">
         <div className="h-full flex items-center justify-center">
-          <div className="text-codex-text-secondary">Loading teams...</div>
+          <div className="text-codex-text-secondary">Loading workflows...</div>
         </div>
       </div>
     );
@@ -159,23 +159,23 @@ export default function AgentTeamsPage({ projectId }: AgentTeamsPageProps) {
       <div style={{ flexShrink: 0 }} className="px-8 pt-8 pb-4">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h1 className="text-2xl font-semibold text-codex-text-primary">Agent Teams</h1>
+            <h1 className="text-2xl font-semibold text-codex-text-primary">Workflows</h1>
             <p className="text-sm text-codex-text-secondary mt-1">
-              {teams.length} teams that orchestrate multiple agents
+              {teams.length} workflows that orchestrate multiple agents
             </p>
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
             className="px-3 py-1.5 text-xs text-white bg-codex-accent hover:bg-codex-accent/80 rounded-md transition-colors"
           >
-            + New Team
+            + New Workflow
           </button>
         </div>
 
         <div className="relative max-w-md">
           <input
             type="text"
-            placeholder="Search teams..."
+            placeholder="Search workflows..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full px-3 py-2 bg-codex-surface border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
@@ -193,14 +193,14 @@ export default function AgentTeamsPage({ projectId }: AgentTeamsPageProps) {
           <div className="text-center py-16">
             <div className="text-4xl mb-3">{searchQuery ? '🔍' : '👥'}</div>
             <h3 className="text-sm font-semibold text-codex-text-primary mb-1">
-              {searchQuery ? 'No teams found' : 'No teams yet'}
+              {searchQuery ? 'No workflows found' : 'No workflows yet'}
             </h3>
             <p className="text-xs text-codex-text-muted mb-4">
-              {searchQuery ? 'Try a different search term' : 'Create your first agent team'}
+              {searchQuery ? 'Try a different search term' : 'Create your first workflow'}
             </p>
             {!searchQuery && (
               <button onClick={() => setShowCreateModal(true)} className="px-4 py-2 text-xs text-white bg-codex-accent hover:bg-codex-accent/80 rounded-md transition-colors">
-                Create Team
+                Create Workflow
               </button>
             )}
           </div>
@@ -277,9 +277,9 @@ export default function AgentTeamsPage({ projectId }: AgentTeamsPageProps) {
       </div>
 
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
           <div className="bg-codex-bg border border-codex-border rounded-lg p-6 w-[400px] shadow-xl">
-            <h2 className="text-sm font-semibold text-codex-text-primary mb-4">Create New Team</h2>
+            <h2 className="text-sm font-semibold text-codex-text-primary mb-4">Create New Workflow</h2>
             <div className="space-y-3">
               <div className="flex gap-3">
                 <div>
@@ -343,7 +343,7 @@ export default function AgentTeamsPage({ projectId }: AgentTeamsPageProps) {
                 disabled={creating || !newName.trim()}
                 className="px-4 py-1.5 text-xs text-white bg-codex-accent hover:bg-codex-accent/80 rounded-md transition-colors disabled:opacity-50"
               >
-                {creating ? 'Creating...' : 'Create Team'}
+                {creating ? 'Creating...' : 'Create Workflow'}
               </button>
             </div>
           </div>
