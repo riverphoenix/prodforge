@@ -49,3 +49,6 @@ build/
 # Logs
 logs/
 *.log
+
+# Internal docs
+PLAN.md
