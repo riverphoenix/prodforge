@@ -17,6 +17,7 @@ pub fn run() {
             init_db(&app.handle())?;
             let sidecar_mgr = app.state::<sidecar::SidecarManager>();
             sidecar_mgr.start(&app.handle());
+            sidecar::start_watchdog(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
