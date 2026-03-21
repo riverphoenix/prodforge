@@ -19,21 +19,8 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  build-macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-latest
-            arch: aarch64
-            rust_target: aarch64-apple-darwin
-            pyinstaller_arch: arm64
-          - runner: macos-13
-            arch: x86_64
-            rust_target: x86_64-apple-darwin
-            pyinstaller_arch: x86_64
-
-    runs-on: ${{ matrix.runner }}
+  build-macos-arm:
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -50,8 +37,6 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -68,13 +53,13 @@ jobs:
           pip install pyinstaller
           pip install -r requirements.txt
 
-      - name: Build Python sidecar
+      - name: Build Python sidecar (arm64)
         working-directory: python-sidecar
         run: |
           pyinstaller \
             --onefile \
             --name prodforge-sidecar \
-            --target-arch ${{ matrix.pyinstaller_arch }} \
+            --target-arch arm64 \
             --hidden-import openai_client \
             --hidden-import anthropic_client \
             --hidden-import google_client \
@@ -87,12 +72,12 @@ jobs:
             --hidden-import tracing_layer \
             --runtime-hook runtime_hook_ssl.py \
             main.py
-          cp dist/prodforge-sidecar ../src-tauri/binaries/prodforge-sidecar-${{ matrix.rust_target }}
-          chmod +x ../src-tauri/binaries/prodforge-sidecar-${{ matrix.rust_target }}
+          cp dist/prodforge-sidecar ../src-tauri/binaries/prodforge-sidecar-aarch64-apple-darwin
+          chmod +x ../src-tauri/binaries/prodforge-sidecar-aarch64-apple-darwin
 
       - name: Verify sidecar binary
         run: |
-          file src-tauri/binaries/prodforge-sidecar-${{ matrix.rust_target }}
+          file src-tauri/binaries/prodforge-sidecar-aarch64-apple-darwin
           ls -lh src-tauri/binaries/
 
       - name: Build Tauri app
@@ -100,19 +85,97 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: --target ${{ matrix.rust_target }}
+          args: --target aarch64-apple-darwin
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: prodforge-${{ matrix.arch }}-apple-darwin
-          path: |
-            src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg
-            src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos/*.app
+          name: prodforge-aarch64-apple-darwin
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+  build-macos-intel:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install x86_64 Python via Rosetta
+        run: |
+          arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
+          arch -x86_64 /usr/local/bin/brew install python@${{ env.PYTHON_VERSION }}
+
+      - name: Setup Rust with x86_64 target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: x86_64
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Python dependencies (x86_64)
+        working-directory: python-sidecar
+        run: |
+          X86_PYTHON=$(arch -x86_64 /usr/local/bin/brew --prefix python@${{ env.PYTHON_VERSION }})/bin/python3
+          arch -x86_64 $X86_PYTHON -m pip install --upgrade pip
+          arch -x86_64 $X86_PYTHON -m pip install pyinstaller
+          arch -x86_64 $X86_PYTHON -m pip install -r requirements.txt
+
+      - name: Build Python sidecar (x86_64)
+        working-directory: python-sidecar
+        run: |
+          X86_PYTHON=$(arch -x86_64 /usr/local/bin/brew --prefix python@${{ env.PYTHON_VERSION }})/bin/python3
+          arch -x86_64 $X86_PYTHON -m PyInstaller \
+            --onefile \
+            --name prodforge-sidecar \
+            --target-arch x86_64 \
+            --hidden-import openai_client \
+            --hidden-import anthropic_client \
+            --hidden-import google_client \
+            --hidden-import ollama_client \
+            --hidden-import framework_loader \
+            --hidden-import document_parser \
+            --hidden-import agent_engine \
+            --hidden-import team_engine \
+            --hidden-import scheduler \
+            --hidden-import tracing_layer \
+            --runtime-hook runtime_hook_ssl.py \
+            main.py
+          cp dist/prodforge-sidecar ../src-tauri/binaries/prodforge-sidecar-x86_64-apple-darwin
+          chmod +x ../src-tauri/binaries/prodforge-sidecar-x86_64-apple-darwin
+
+      - name: Verify sidecar binary
+        run: |
+          file src-tauri/binaries/prodforge-sidecar-x86_64-apple-darwin
+          ls -lh src-tauri/binaries/
+
+      - name: Build Tauri app (x86_64)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target x86_64-apple-darwin
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prodforge-x86_64-apple-darwin
+          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
   release:
-    needs: build-macos
+    needs: [build-macos-arm, build-macos-intel]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
     steps:
@@ -124,7 +187,7 @@ jobs:
           path: artifacts
 
       - name: List artifacts
-        run: find artifacts -type f -name '*.dmg' -o -name '*.app' | sort
+        run: find artifacts -type f -name '*.dmg' | sort
 
       - name: Determine version
         id: version
