@@ -53,6 +53,9 @@ jobs:
           pip install pyinstaller
           pip install -r requirements.txt
 
+      - name: Create binaries directory
+        run: mkdir -p src-tauri/binaries
+
       - name: Build Python sidecar (arm64)
         working-directory: python-sidecar
         run: |
@@ -105,10 +108,18 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install x86_64 Python via Rosetta
+      - name: Install x86_64 Homebrew and Python via Rosetta
         run: |
-          arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
-          arch -x86_64 /usr/local/bin/brew install python@${{ env.PYTHON_VERSION }}
+          # Install x86_64 Homebrew under /usr/local if not present
+          if [ ! -f /usr/local/bin/brew ]; then
+            arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          fi
+          # Install Python, use --overwrite to handle link conflicts
+          arch -x86_64 /usr/local/bin/brew install --overwrite python@${{ env.PYTHON_VERSION }}
+          # Verify
+          echo "x86_64 Python path:"
+          arch -x86_64 /usr/local/bin/brew --prefix python@${{ env.PYTHON_VERSION }}
+          /usr/local/opt/python@${{ env.PYTHON_VERSION }}/bin/python3.11 --version
 
       - name: Setup Rust with x86_64 target
         uses: dtolnay/rust-toolchain@stable
@@ -124,18 +135,21 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Create binaries directory
+        run: mkdir -p src-tauri/binaries
+
       - name: Install Python dependencies (x86_64)
         working-directory: python-sidecar
         run: |
-          X86_PYTHON=$(arch -x86_64 /usr/local/bin/brew --prefix python@${{ env.PYTHON_VERSION }})/bin/python3
-          arch -x86_64 $X86_PYTHON -m pip install --upgrade pip
-          arch -x86_64 $X86_PYTHON -m pip install pyinstaller
-          arch -x86_64 $X86_PYTHON -m pip install -r requirements.txt
+          X86_PYTHON=/usr/local/opt/python@${{ env.PYTHON_VERSION }}/bin/python3.11
+          arch -x86_64 $X86_PYTHON -m pip install --upgrade pip --break-system-packages
+          arch -x86_64 $X86_PYTHON -m pip install pyinstaller --break-system-packages
+          arch -x86_64 $X86_PYTHON -m pip install -r requirements.txt --break-system-packages
 
       - name: Build Python sidecar (x86_64)
         working-directory: python-sidecar
         run: |
-          X86_PYTHON=$(arch -x86_64 /usr/local/bin/brew --prefix python@${{ env.PYTHON_VERSION }})/bin/python3
+          X86_PYTHON=/usr/local/opt/python@${{ env.PYTHON_VERSION }}/bin/python3.11
           arch -x86_64 $X86_PYTHON -m PyInstaller \
             --onefile \
             --name prodforge-sidecar \
