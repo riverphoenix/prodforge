@@ -1,0 +1,149 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a GitHub release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: aarch64
+            rust_target: aarch64-apple-darwin
+            pyinstaller_arch: arm64
+          - runner: macos-13
+            arch: x86_64
+            rust_target: x86_64-apple-darwin
+            pyinstaller_arch: x86_64
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Python dependencies
+        working-directory: python-sidecar
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build Python sidecar
+        working-directory: python-sidecar
+        run: |
+          pyinstaller \
+            --onefile \
+            --name prodforge-sidecar \
+            --target-arch ${{ matrix.pyinstaller_arch }} \
+            --hidden-import openai_client \
+            --hidden-import anthropic_client \
+            --hidden-import google_client \
+            --hidden-import ollama_client \
+            --hidden-import framework_loader \
+            --hidden-import document_parser \
+            --hidden-import agent_engine \
+            --hidden-import team_engine \
+            --hidden-import scheduler \
+            --hidden-import tracing_layer \
+            --runtime-hook runtime_hook_ssl.py \
+            main.py
+          cp dist/prodforge-sidecar ../src-tauri/binaries/prodforge-sidecar-${{ matrix.rust_target }}
+          chmod +x ../src-tauri/binaries/prodforge-sidecar-${{ matrix.rust_target }}
+
+      - name: Verify sidecar binary
+        run: |
+          file src-tauri/binaries/prodforge-sidecar-${{ matrix.rust_target }}
+          ls -lh src-tauri/binaries/
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target ${{ matrix.rust_target }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prodforge-${{ matrix.arch }}-apple-darwin
+          path: |
+            src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos/*.app
+          if-no-files-found: error
+
+  release:
+    needs: build-macos
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f -name '*.dmg' -o -name '*.app' | sort
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$(date +%Y%m%d-%H%M%S)-dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "ProdForge ${{ steps.version.outputs.tag }}"
+          draft: false
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
