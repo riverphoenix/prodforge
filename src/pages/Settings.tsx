@@ -516,7 +516,7 @@ export default function Settings() {
                                 const models = await modelsAPI.listByProvider(provider, key || '', url);
                                 setDiscoveredModels(prev => ({ ...prev, [provider]: models }));
                                 if (!enabledModels[provider] || enabledModels[provider].length === 0) {
-                                  setEnabledModels(prev => ({ ...prev, [provider]: models.slice(0, 5) }));
+                                  setEnabledModels(prev => ({ ...prev, [provider]: models.slice(0, 4) }));
                                 }
                               } catch { /* ignore */ }
                               setDiscoveringModels(prev => ({ ...prev, [provider]: false }));

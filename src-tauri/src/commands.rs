@@ -2166,25 +2166,25 @@ pub async fn get_available_providers(app: tauri::AppHandle) -> Result<Vec<Provid
             id: "openai".to_string(),
             name: "OpenAI".to_string(),
             configured: settings.api_key_encrypted.is_some(),
-            models: vec!["gpt-5".to_string(), "gpt-5-mini".to_string(), "gpt-5-nano".to_string()],
+            models: vec!["gpt-5".into(), "gpt-5-mini".into(), "gpt-5-nano".into(), "gpt-4o".into(), "gpt-4o-mini".into(), "o4-mini".into(), "o3".into(), "o3-mini".into(), "o1".into(), "o1-mini".into(), "gpt-4-turbo".into(), "gpt-4".into(), "gpt-3.5-turbo".into()],
         },
         ProviderInfo {
             id: "anthropic".to_string(),
             name: "Anthropic".to_string(),
             configured: settings.anthropic_api_key_encrypted.is_some(),
-            models: vec!["claude-sonnet-4-5".to_string(), "claude-haiku-4-5".to_string()],
+            models: vec!["claude-opus-4-6".into(), "claude-sonnet-4-6".into(), "claude-sonnet-4-5-20250514".into(), "claude-haiku-4-5-20251001".into()],
         },
         ProviderInfo {
             id: "google".to_string(),
             name: "Google".to_string(),
             configured: settings.google_api_key_encrypted.is_some(),
-            models: vec!["gemini-2.5-pro".to_string(), "gemini-2.5-flash".to_string()],
+            models: vec!["gemini-2.5-pro".into(), "gemini-2.5-flash".into(), "gemini-2.0-flash".into()],
         },
         ProviderInfo {
             id: "ollama".to_string(),
             name: "Ollama".to_string(),
             configured: settings.ollama_base_url.is_some(),
-            models: vec!["llama3".to_string(), "mistral".to_string(), "codellama".to_string()],
+            models: vec!["llama3".into(), "mistral".into(), "codellama".into()],
         },
     ];
 
