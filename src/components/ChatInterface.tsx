@@ -315,6 +315,9 @@ export default function ChatInterface({
         }
       }
 
+      // Get the correct API key for the selected provider
+      const providerKey = await settingsAPI.getDecryptedKeyForProvider(selectedProvider) || apiKey;
+
       const abort = new AbortController();
       abortRef.current = abort;
 
@@ -328,7 +331,7 @@ export default function ChatInterface({
           project_id: projectId,
           messages: chatMessages,
           conversation_id: convId,
-          api_key: apiKey,
+          api_key: providerKey,
           model: selectedModel,
           provider: selectedProvider,
           max_tokens: 4096,

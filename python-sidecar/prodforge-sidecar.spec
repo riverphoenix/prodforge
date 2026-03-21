@@ -53,7 +53,7 @@ hidden += [
 datas = []
 binaries = []
 
-for pkg in ['certifi', 'httpx', 'anthropic', 'pydantic', 'pydantic_core']:
+for pkg in ['certifi', 'httpx', 'httpcore', 'openai', 'anthropic', 'pydantic', 'pydantic_core']:
     try:
         d, b, h = collect_all(pkg)
         datas += d
