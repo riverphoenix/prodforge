@@ -28,7 +28,7 @@ impl SidecarManager {
                 if let Ok(mut guard) = self.child.lock() {
                     *guard = Some(child);
                 }
-                wait_for_health(15);
+                wait_for_health(30);
             }
             Err(e) => {
                 eprintln!("[sidecar] Failed to start: {}. Path: {:?}", e, exe_path);

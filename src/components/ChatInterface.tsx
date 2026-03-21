@@ -304,13 +304,16 @@ export default function ChatInterface({
       setUrlInput('');
       setShowAttachments(false);
 
-      // Call Python sidecar streaming endpoint
-      console.log('Sending request to Python sidecar:', {
-        url: 'http://127.0.0.1:8001/chat/stream',
-        model: selectedModel,
-        messageCount: chatMessages.length,
-        hasApiKey: !!apiKey,
-      });
+      // Wait for sidecar to be ready before first request
+      for (let attempt = 0; attempt < 10; attempt++) {
+        try {
+          const health = await fetch('http://127.0.0.1:8001/health', { signal: AbortSignal.timeout(2000) });
+          if (health.ok) break;
+        } catch {
+          if (attempt === 9) throw new TypeError('Failed to fetch');
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
 
       const abort = new AbortController();
       abortRef.current = abort;

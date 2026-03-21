@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { settingsAPI, projectsAPI } from '../lib/ipc';
+import { settingsAPI } from '../lib/ipc';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -12,10 +12,9 @@ export default function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
   const [name, setName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [company, setCompany] = useState('');
-  const [projectName, setProjectName] = useState('My First Project');
   const [saving, setSaving] = useState(false);
 
-  const steps = ['Welcome', 'API Key', 'Profile', 'First Project'];
+  const steps = ['Welcome', 'API Key', 'Profile'];
   const totalSteps = steps.length;
 
   const handleFinish = async () => {
@@ -27,9 +26,6 @@ export default function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
         job_title: jobTitle || undefined,
         company: company || undefined,
       });
-      if (projectName.trim()) {
-        await projectsAPI.create(projectName.trim());
-      }
       onComplete();
     } catch (err) {
       console.error('Setup failed:', err);
@@ -131,25 +127,6 @@ export default function SetupWizard({ onComplete, onSkip }: SetupWizardProps) {
                     className="w-full px-3 py-2 bg-codex-bg border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
                   />
                 </div>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div>
-              <h2 className="text-xl font-semibold text-codex-text-primary mb-2">Create your first project</h2>
-              <p className="text-sm text-codex-text-secondary mb-6">
-                Projects organize your conversations, documents, and outputs.
-              </p>
-              <div>
-                <label className="block text-xs text-codex-text-muted mb-1.5">Project Name</label>
-                <input
-                  type="text"
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  placeholder="My First Project"
-                  className="w-full px-3 py-2 bg-codex-bg border border-codex-border rounded-md text-codex-text-primary text-sm placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent"
-                />
               </div>
             </div>
           )}

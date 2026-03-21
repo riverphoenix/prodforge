@@ -231,9 +231,9 @@ export const modelsAPI = {
       return data.models || [];
     } catch {
       return [
-        'gpt-5',
-        'gpt-5-mini',
-        'gpt-5-nano',
+        'gpt-5', 'gpt-5-mini', 'gpt-5-nano',
+        'gpt-4o', 'gpt-4o-mini', 'o4-mini', 'o3', 'o3-mini',
+        'o1', 'o1-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo',
       ];
     }
   },
@@ -248,9 +248,9 @@ export const modelsAPI = {
       return data.models || [];
     } catch {
       const fallbacks: Record<string, string[]> = {
-        openai: ['gpt-5', 'gpt-5-mini', 'gpt-5-nano'],
-        anthropic: ['claude-sonnet-4-5-20250514', 'claude-haiku-4-5-20251001'],
-        google: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+        openai: ['gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-4o', 'gpt-4o-mini', 'o4-mini', 'o3', 'o3-mini', 'o1', 'o1-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
+        anthropic: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250514', 'claude-haiku-4-5-20251001'],
+        google: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
         ollama: ['llama3', 'mistral', 'codellama'],
       };
       return fallbacks[provider] || [];
