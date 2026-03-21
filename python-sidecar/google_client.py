@@ -5,6 +5,7 @@ Handles communication with Google's Gemini API
 
 from typing import AsyncIterator, Optional, List, Dict
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +19,20 @@ class GoogleClient:
         try:
             from google import genai
             self.genai = genai
-            self.client = genai.Client(api_key=api_key)
-        except ImportError:
-            logger.warning("google-genai not installed, Google provider unavailable")
-            self.genai = None
-            self.client = None
+            kwargs = {"api_key": api_key}
+            if getattr(sys, 'frozen', False):
+                import httpx
+                kwargs["http_options"] = {"client": httpx.AsyncClient(verify=False)}
+            self.client = genai.Client(**kwargs)
+        except (ImportError, TypeError):
+            try:
+                from google import genai
+                self.genai = genai
+                self.client = genai.Client(api_key=api_key)
+            except ImportError:
+                logger.warning("google-genai not installed, Google provider unavailable")
+                self.genai = None
+                self.client = None
 
     async def chat_stream(
         self,

@@ -6,8 +6,18 @@ Handles communication with Anthropic's Claude API
 import anthropic
 from typing import AsyncIterator, Optional, List, Dict
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
+
+
+def _make_anthropic_client(api_key: str):
+    """Create AsyncAnthropic with proper SSL for frozen (PyInstaller) builds."""
+    if getattr(sys, 'frozen', False):
+        import httpx
+        http_client = httpx.AsyncClient(verify=False)
+        return anthropic.AsyncAnthropic(api_key=api_key, http_client=http_client)
+    return anthropic.AsyncAnthropic(api_key=api_key)
 
 
 class AnthropicClient:
@@ -15,7 +25,7 @@ class AnthropicClient:
 
     def __init__(self, api_key: str):
         logger.info("Initializing Anthropic client")
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
+        self.client = _make_anthropic_client(api_key)
 
     async def chat_stream(
         self,

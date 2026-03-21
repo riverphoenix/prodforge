@@ -29,6 +29,7 @@ hidden += [
     'anthropic_client',
     'google_client',
     'ollama_client',
+    'ssl_helper',
     'framework_loader',
     'document_parser',
     'agent_engine',
@@ -53,7 +54,7 @@ hidden += [
 datas = []
 binaries = []
 
-for pkg in ['certifi', 'httpx', 'httpcore', 'openai', 'anthropic', 'pydantic', 'pydantic_core']:
+for pkg in ['certifi', 'httpx', 'anthropic', 'pydantic', 'pydantic_core']:
     try:
         d, b, h = collect_all(pkg)
         datas += d

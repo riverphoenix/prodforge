@@ -7,8 +7,18 @@ from openai import AsyncOpenAI
 from typing import AsyncIterator, Optional, List, Dict
 import json
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
+
+
+def _make_openai_client(api_key: str) -> AsyncOpenAI:
+    """Create AsyncOpenAI with proper SSL for frozen (PyInstaller) builds."""
+    if getattr(sys, 'frozen', False):
+        import httpx
+        http_client = httpx.AsyncClient(verify=False)
+        return AsyncOpenAI(api_key=api_key, http_client=http_client)
+    return AsyncOpenAI(api_key=api_key)
 
 
 class OpenAIClient:
@@ -22,7 +32,7 @@ class OpenAIClient:
             api_key: OpenAI API key
         """
         logger.info("Initializing OpenAI client")
-        self.async_client = AsyncOpenAI(api_key=api_key)
+        self.async_client = _make_openai_client(api_key)
 
     async def chat_stream(
         self,
