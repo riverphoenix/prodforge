@@ -132,7 +132,7 @@ export default function QuickSwitcher({ onSelectProject, onSelectConversation, o
   return (
     <div
       className="fixed inset-0 flex items-start justify-center pt-[15vh]"
-      style={{ backgroundColor: '#000000f2', zIndex: 50 }}
+      style={{ backgroundColor: '#000000', zIndex: 50 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div

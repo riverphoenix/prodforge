@@ -63,7 +63,7 @@ export default function BatchExportDialog({ mode, items, onExport, onSaveFiles, 
   const label = mode === 'frameworks' ? 'Frameworks' : mode === 'skills' ? 'Skills' : mode === 'agents' ? 'Agents' : 'Prompts';
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black flex items-center justify-center z-50" onClick={onClose}>
       <div
         className="border border-codex-border rounded-lg shadow-xl w-[550px] max-h-[80vh] overflow-hidden flex flex-col"
         style={{ backgroundColor: '#252526' }}

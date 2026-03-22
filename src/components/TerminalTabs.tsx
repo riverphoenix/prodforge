@@ -111,7 +111,7 @@ export default function TerminalTabs({ projectId }: TerminalTabsProps) {
           <div
             key={tab.id}
             className="h-full"
-            style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
+            style={{ display: tab.id === activeTabId ? 'block' : 'none', position: 'relative' }}
           >
             <TerminalView
               projectId={projectId}

@@ -120,7 +120,7 @@ export default function PromptEditorModal({ prompt, onSave, onClose }: PromptEdi
 
   return (
     <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-black" onClick={onClose} />
       <div className="absolute right-0 top-0 bottom-0 w-[640px] border-l border-codex-border flex flex-col overflow-hidden animate-slide-in-right" style={{ backgroundColor: '#252526' }}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-codex-border">
           <h2 className="text-sm font-semibold text-codex-text-primary">

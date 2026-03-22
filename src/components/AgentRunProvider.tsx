@@ -50,6 +50,12 @@ export default function AgentRunProvider({ children }: Props) {
       try {
         await agentsAPI.incrementUsage(agent.id);
 
+        // Create DB record for run history
+        try {
+          const dbRun = await agentRunsAPI.create(agent.id, projectId, skillId || null, prompt, agent.model, agent.provider);
+          updateRun(agent.id, { runId: dbRun.id });
+        } catch {}
+
         let apiKey = '';
         if (agent.provider === 'anthropic') {
           apiKey = await settingsAPI.getDecryptedAnthropicKey() || '';

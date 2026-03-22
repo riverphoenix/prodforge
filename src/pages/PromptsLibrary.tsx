@@ -456,7 +456,7 @@ export default function PromptsLibrary({ projectId: _projectId, onUsePrompt }: P
       )}
 
       {variablePrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
           <div className="w-full max-w-lg rounded-lg border border-codex-border shadow-2xl bg-codex-sidebar">
             <div className="px-5 pt-5 pb-3 border-b border-codex-border/50">
               <h3 className="text-sm font-semibold text-codex-text-primary">{variablePrompt.name}</h3>

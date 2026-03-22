@@ -224,9 +224,9 @@ export default function ProjectView({ projectId, activeTab, onTabChange, initial
           <AgentsPage projectId={projectId} />
         )}
 
-        {activeTab === 'claude' && (
-          <ClaudeChat projectId={projectId} />
-        )}
+        <div style={{ display: activeTab === 'claude' ? 'block' : 'none', flex: 1, position: 'relative', minHeight: 0 }}>
+          <ClaudeChat projectId={projectId} visible={activeTab === 'claude'} />
+        </div>
 
       </div>
 

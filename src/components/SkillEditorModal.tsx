@@ -108,7 +108,7 @@ export default function SkillEditorModal({ skill, categories, onSave, onClose }:
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
       <div className="w-full max-w-2xl max-h-[85vh] rounded-lg border border-codex-border shadow-2xl flex flex-col" style={{ backgroundColor: '#252526' }}>
         <div className="px-5 pt-5 pb-3 border-b border-codex-border/50 flex-shrink-0">
           <h3 className="text-sm font-semibold text-codex-text-primary">

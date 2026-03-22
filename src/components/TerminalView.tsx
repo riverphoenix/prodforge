@@ -12,9 +12,10 @@ interface TerminalViewProps {
   command?: string;
   sessionId?: string;
   onSessionCreated?: (sessionId: string) => void;
+  visible?: boolean;
 }
 
-export default function TerminalView({ projectId, cwd, command, sessionId: externalSessionId, onSessionCreated }: TerminalViewProps) {
+export default function TerminalView({ projectId, cwd, command, sessionId: externalSessionId, onSessionCreated, visible = true }: TerminalViewProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -90,6 +91,7 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
         unlistenRef.current = unlisten;
 
         setReady(true);
+        setTimeout(() => term.focus(), 150);
       } catch (err) {
         term.writeln(`\x1b[31mFailed to create terminal session: ${err}\x1b[0m`);
       }
@@ -102,6 +104,10 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
         ptyAPI.write(sessionIdRef.current, data).catch(() => {});
       }
     });
+
+    // Focus terminal on click anywhere in the container
+    const handleClick = () => term.focus();
+    terminalRef.current.addEventListener('click', handleClick);
 
     const handleResize = () => {
       setTimeout(() => {
@@ -127,9 +133,11 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
       resizeObserver.observe(terminalRef.current);
     }
 
+    const containerEl = terminalRef.current;
     return () => {
       window.removeEventListener('resize', handleResize);
       resizeObserver.disconnect();
+      containerEl?.removeEventListener('click', handleClick);
       if (unlistenRef.current) {
         unlistenRef.current();
       }
@@ -148,6 +156,18 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
     }
   }, [ready]);
 
+  useEffect(() => {
+    if (visible && fitAddonRef.current && xtermRef.current) {
+      setTimeout(() => {
+        fitAddonRef.current?.fit();
+        if (sessionIdRef.current && xtermRef.current) {
+          ptyAPI.resize(sessionIdRef.current, xtermRef.current.cols, xtermRef.current.rows).catch(() => {});
+        }
+        xtermRef.current?.focus();
+      }, 100);
+    }
+  }, [visible]);
+
   if (!projectId && !cwd) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: 'var(--color-codex-bg, #1e1e1e)' }}>
@@ -159,8 +179,7 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
   return (
     <div
       ref={terminalRef}
-      className="h-full w-full"
-      style={{ backgroundColor: 'var(--color-codex-bg, #1e1e1e)', padding: '4px' }}
+      style={{ position: 'absolute', inset: 0, backgroundColor: 'var(--color-codex-bg, #1e1e1e)', padding: '4px' }}
     />
   );
 }

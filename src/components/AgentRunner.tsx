@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { AgentDef, Skill, AgentRun } from '../lib/types';
-import { agentRunsAPI } from '../lib/ipc';
+import { agentRunsAPI, frameworkOutputsAPI } from '../lib/ipc';
 import { useAgentRunManager } from '../lib/agentRunManager';
+import MarkdownRenderer from './MarkdownRenderer';
+import CopyButton from './CopyButton';
 
 interface AgentRunnerProps {
   agent: AgentDef;
@@ -17,7 +19,10 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
   const [viewingTokens, setViewingTokens] = useState(0);
   const [viewingCost, setViewingCost] = useState(0);
   const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [followUpInput, setFollowUpInput] = useState('');
+  const [savedNotice, setSavedNotice] = useState(false);
   const outputRef = useRef<HTMLDivElement>(null);
+  const followUpRef = useRef<HTMLTextAreaElement>(null);
   const { activeRuns, startRun, cancelRun } = useAgentRunManager();
 
   const activeRun = activeRuns.get(agent.id);
@@ -26,6 +31,7 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
   const error = activeRun?.error ?? null;
   const totalTokens = viewingOutput !== null ? viewingTokens : (activeRun?.totalTokens ?? 0);
   const cost = viewingOutput !== null ? viewingCost : (activeRun?.cost ?? 0);
+  const isCompleted = !isRunning && output.length > 0;
 
   const agentSkills = (() => {
     try {
@@ -64,6 +70,7 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
     setViewingOutput(null);
     setViewingTokens(0);
     setViewingCost(0);
+    setFollowUpInput('');
     const skillPrompts = agentSkills.map(s => s.system_prompt);
     await startRun(agent, prompt.trim(), projectId, selectedSkillId || undefined, skillPrompts);
   };
@@ -83,6 +90,36 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
     setViewingOutput(null);
     setViewingTokens(0);
     setViewingCost(0);
+  };
+
+  const handleFollowUp = async () => {
+    if (!followUpInput.trim() || isRunning) return;
+    const combinedPrompt = `Previous request: ${prompt}\n\nPrevious output:\n${output}\n\nFollow-up request: ${followUpInput.trim()}`;
+    setPrompt(followUpInput.trim());
+    setViewingOutput(null);
+    setViewingTokens(0);
+    setViewingCost(0);
+    setFollowUpInput('');
+    const skillPrompts = agentSkills.map(s => s.system_prompt);
+    await startRun(agent, combinedPrompt, projectId, selectedSkillId || undefined, skillPrompts);
+  };
+
+  const handleSaveToOutputs = async () => {
+    if (!output) return;
+    try {
+      await frameworkOutputsAPI.create(
+        projectId,
+        'agent-output',
+        'Agent Output',
+        `${agent.name} - ${new Date().toLocaleDateString()}`,
+        prompt,
+        [],
+        output,
+        'markdown'
+      );
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 2000);
+    } catch {}
   };
 
   const [elapsed, setElapsed] = useState(0);
@@ -187,11 +224,65 @@ export default function AgentRunner({ agent, skills, projectId, onBack }: AgentR
             )}
 
             {output ? (
-              <div className="prose prose-invert prose-sm max-w-none">
-                <pre className="whitespace-pre-wrap text-xs text-codex-text-primary leading-relaxed font-sans">
-                  {output}
-                  {isRunning && viewingOutput === null && <span className="inline-block w-2 h-4 bg-codex-accent animate-pulse ml-0.5" />}
-                </pre>
+              <div className="text-sm text-codex-text-primary leading-relaxed">
+                <MarkdownRenderer content={output} />
+                {isRunning && viewingOutput === null && <span className="inline-block w-2 h-4 bg-codex-accent animate-pulse ml-0.5" />}
+
+                {isCompleted && (
+                  <div className="mt-4 pt-3 border-t border-codex-border/50">
+                    <div className="flex items-center gap-3">
+                      <CopyButton text={output} />
+                      <button
+                        onClick={handleSaveToOutputs}
+                        className="flex items-center gap-1 text-[10px] text-codex-text-muted hover:text-codex-text-secondary transition-colors"
+                      >
+                        {savedNotice ? (
+                          <>
+                            <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                            Saved!
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
+                            </svg>
+                            Save to Outputs
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {viewingOutput === null && (
+                      <div className="mt-3 flex gap-2 items-end">
+                        <textarea
+                          ref={followUpRef}
+                          value={followUpInput}
+                          onChange={(e) => setFollowUpInput(e.target.value)}
+                          placeholder="Continue the conversation..."
+                          rows={2}
+                          className="flex-1 px-3 py-2 bg-codex-surface border border-codex-border rounded text-xs text-codex-text-primary placeholder-codex-text-muted focus:outline-none focus:ring-1 focus:ring-codex-accent resize-none"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleFollowUp();
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={handleFollowUp}
+                          disabled={!followUpInput.trim()}
+                          className="p-2 text-white bg-codex-accent hover:bg-codex-accent/80 rounded-md transition-colors disabled:opacity-30"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0 1 21.485 12 59.77 59.77 0 0 1 3.27 20.876L5.999 12Zm0 0h7.5" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : isRunning ? (
               <div className="text-center py-16">

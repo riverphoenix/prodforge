@@ -129,7 +129,7 @@ export default function CategoryManager({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black flex items-center justify-center z-50" onClick={onClose}>
       <div
         className="border border-codex-border rounded-lg shadow-xl w-[500px] max-h-[600px] overflow-hidden flex flex-col"
         style={{ backgroundColor: '#252526' }}

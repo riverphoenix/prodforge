@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Message, ChatStreamEvent, Settings, ContextDocument, LLMProvider } from '../lib/types';
 import { conversationsAPI, messagesAPI, tokenUsageAPI, contextDocumentsAPI, settingsAPI } from '../lib/ipc';
 import MarkdownRenderer from './MarkdownRenderer';
+import CopyButton from './CopyButton';
 import ModelSelector from './ModelSelector';
 import { emitError } from '../lib/errorBus';
 
@@ -538,6 +539,9 @@ export default function ChatInterface({
                     <div className="text-sm text-codex-text-primary leading-relaxed">
                       <MarkdownRenderer content={message.content} />
                     </div>
+                    {message.role === 'assistant' && (
+                      <CopyButton text={message.content} className="mt-2" />
+                    )}
                     {message.role === 'user' && message.fullContext && (
                       <div className="mt-2">
                         <button

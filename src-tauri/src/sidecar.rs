@@ -6,6 +6,8 @@ use tauri::{AppHandle, Manager};
 pub struct SidecarManager {
     child: Mutex<Option<Child>>,
     exe_path: Mutex<Option<std::path::PathBuf>>,
+    is_source_mode: Mutex<bool>,
+    source_dir: Mutex<Option<std::path::PathBuf>>,
     shutting_down: AtomicBool,
 }
 
@@ -14,32 +16,51 @@ impl SidecarManager {
         Self {
             child: Mutex::new(None),
             exe_path: Mutex::new(None),
+            is_source_mode: Mutex::new(false),
+            source_dir: Mutex::new(None),
             shutting_down: AtomicBool::new(false),
         }
     }
 
     pub fn start(&self, app: &AppHandle) {
         let exe_path = resolve_sidecar_path(app);
-        eprintln!("[sidecar] Resolved path: {:?}", exe_path);
+        eprintln!("[sidecar] Resolved binary path: {:?}", exe_path);
 
         if let Ok(mut path_guard) = self.exe_path.lock() {
             *path_guard = Some(exe_path.clone());
         }
 
-        self.spawn_process(&exe_path);
-    }
-
-    fn spawn_process(&self, exe_path: &std::path::Path) -> bool {
-        // Kill any existing process first
-        if let Ok(mut guard) = self.child.lock() {
-            if let Some(ref mut child) = *guard {
-                let _ = child.kill();
-                let _ = child.wait();
+        // Try binary first
+        if exe_path.exists() {
+            if self.spawn_binary(&exe_path) {
+                return;
             }
-            *guard = None;
+            eprintln!("[sidecar] Binary failed, trying source mode...");
         }
 
-        // Also kill any orphaned sidecar on port 8001
+        // Fallback: run from source using venv python
+        let sidecar_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("python-sidecar");
+
+        if sidecar_dir.join("main.py").exists() {
+            if let Ok(mut guard) = self.source_dir.lock() {
+                *guard = Some(sidecar_dir.clone());
+            }
+            if self.spawn_source(&sidecar_dir) {
+                if let Ok(mut mode) = self.is_source_mode.lock() {
+                    *mode = true;
+                }
+                return;
+            }
+        }
+
+        eprintln!("[sidecar] All startup methods failed!");
+    }
+
+    fn spawn_binary(&self, exe_path: &std::path::Path) -> bool {
+        self.kill_existing();
         kill_process_on_port(8001);
 
         match Command::new(exe_path)
@@ -49,20 +70,94 @@ impl SidecarManager {
             .spawn()
         {
             Ok(child) => {
-                eprintln!("[sidecar] Started with PID {}", child.id());
+                eprintln!("[sidecar] Binary started with PID {}", child.id());
                 if let Ok(mut guard) = self.child.lock() {
                     *guard = Some(child);
                 }
-                wait_for_health(30)
+                wait_for_health(45)
             }
             Err(e) => {
-                eprintln!("[sidecar] Failed to start: {}. Path: {:?}", e, exe_path);
+                eprintln!("[sidecar] Binary failed to start: {}", e);
                 false
             }
         }
     }
 
+    fn spawn_source(&self, sidecar_dir: &std::path::Path) -> bool {
+        self.kill_existing();
+        kill_process_on_port(8001);
+
+        // Try venv python first, then system python
+        let venv_python = sidecar_dir.join("venv").join("bin").join("python");
+        let python = if venv_python.exists() {
+            venv_python
+        } else {
+            std::path::PathBuf::from("python3")
+        };
+
+        eprintln!("[sidecar] Starting from source with {:?}", python);
+
+        match Command::new(&python)
+            .arg(sidecar_dir.join("main.py"))
+            .env("PORT", "8001")
+            .current_dir(sidecar_dir)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+        {
+            Ok(child) => {
+                eprintln!("[sidecar] Source mode started with PID {}", child.id());
+                if let Ok(mut guard) = self.child.lock() {
+                    *guard = Some(child);
+                }
+                wait_for_health(15)
+            }
+            Err(e) => {
+                eprintln!("[sidecar] Source mode failed: {}", e);
+                false
+            }
+        }
+    }
+
+    fn kill_existing(&self) {
+        if let Ok(mut guard) = self.child.lock() {
+            if let Some(ref mut child) = *guard {
+                let _ = child.kill();
+                // Don't block forever on zombie processes — use a timeout
+                let pid = child.id();
+                let start = std::time::Instant::now();
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(_)) => break,
+                        Ok(None) => {
+                            if start.elapsed() > std::time::Duration::from_secs(3) {
+                                eprintln!("[sidecar] Timeout waiting for PID {} to exit, moving on", pid);
+                                break;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+            *guard = None;
+        }
+    }
+
     fn restart(&self) -> bool {
+        // Try source mode first if we know it works
+        if let Ok(mode) = self.is_source_mode.lock() {
+            if *mode {
+                if let Ok(guard) = self.source_dir.lock() {
+                    if let Some(ref dir) = *guard {
+                        eprintln!("[sidecar] Restarting in source mode...");
+                        return self.spawn_source(dir);
+                    }
+                }
+            }
+        }
+
+        // Try binary
         let exe_path = if let Ok(guard) = self.exe_path.lock() {
             guard.clone()
         } else {
@@ -70,19 +165,31 @@ impl SidecarManager {
         };
 
         if let Some(path) = exe_path {
-            eprintln!("[sidecar] Restarting...");
-            self.spawn_process(&path)
-        } else {
-            eprintln!("[sidecar] Cannot restart: no path stored");
-            false
+            eprintln!("[sidecar] Restarting binary...");
+            if self.spawn_binary(&path) {
+                return true;
+            }
         }
+
+        // Fallback to source
+        if let Ok(guard) = self.source_dir.lock() {
+            if let Some(ref dir) = *guard {
+                eprintln!("[sidecar] Binary restart failed, trying source...");
+                if let Ok(mut mode) = self.is_source_mode.lock() {
+                    *mode = true;
+                }
+                return self.spawn_source(dir);
+            }
+        }
+
+        false
     }
 
     pub fn is_alive(&self) -> bool {
         if let Ok(mut guard) = self.child.lock() {
             if let Some(ref mut child) = *guard {
                 match child.try_wait() {
-                    Ok(None) => return true, // still running
+                    Ok(None) => return true,
                     Ok(Some(status)) => {
                         eprintln!("[sidecar] Process exited with status: {}", status);
                         *guard = None;
@@ -98,14 +205,7 @@ impl SidecarManager {
 
     pub fn stop(&self) {
         self.shutting_down.store(true, Ordering::SeqCst);
-        if let Ok(mut guard) = self.child.lock() {
-            if let Some(ref mut child) = *guard {
-                eprintln!("[sidecar] Stopping PID {}", child.id());
-                let _ = child.kill();
-                let _ = child.wait();
-            }
-            *guard = None;
-        }
+        self.kill_existing();
     }
 
     pub fn is_shutting_down(&self) -> bool {
@@ -122,7 +222,6 @@ impl Drop for SidecarManager {
 /// Spawn a background thread that monitors sidecar health and restarts if needed
 pub fn start_watchdog(app: AppHandle) {
     std::thread::spawn(move || {
-        // Wait for initial startup to complete
         std::thread::sleep(std::time::Duration::from_secs(5));
 
         let mut consecutive_failures: u32 = 0;
@@ -146,7 +245,6 @@ pub fn start_watchdog(app: AppHandle) {
                     consecutive_failures
                 );
 
-                // After 2 consecutive failures, check if process is alive
                 if consecutive_failures >= 2 {
                     if !mgr.is_alive() {
                         eprintln!("[watchdog] Sidecar process is dead, restarting");
@@ -159,14 +257,12 @@ pub fn start_watchdog(app: AppHandle) {
                         consecutive_failures = 0;
                     } else {
                         eprintln!("[watchdog] Restart failed");
-                        // Back off before next attempt
                         let backoff = std::cmp::min(consecutive_failures * 5, 30);
                         std::thread::sleep(std::time::Duration::from_secs(backoff as u64));
                     }
                 }
             }
 
-            // Check every 10 seconds
             std::thread::sleep(std::time::Duration::from_secs(10));
         }
     });
