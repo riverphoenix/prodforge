@@ -118,13 +118,18 @@ function App() {
   useEffect(() => {
     (async () => {
       try {
-        if (localStorage.getItem('prodforge_setup_complete')) return;
         const s = await settingsAPI.get();
-        if (!s.api_key_encrypted && !s.anthropic_api_key_encrypted && !s.google_api_key_encrypted) {
-          const projects = await projectsAPI.list();
-          if (!projects || projects.length === 0) {
-            setShowSetupWizard(true);
-          }
+        const hasKeys = s.api_key_encrypted || s.anthropic_api_key_encrypted || s.google_api_key_encrypted;
+        if (hasKeys) return;
+        const projects = await projectsAPI.list();
+        const hasProjects = projects && projects.length > 0;
+        // If DB is clean, clear any stale localStorage flag (e.g. from a previous install)
+        if (!hasProjects) {
+          localStorage.removeItem('prodforge_setup_complete');
+        }
+        if (localStorage.getItem('prodforge_setup_complete')) return;
+        if (!hasProjects) {
+          setShowSetupWizard(true);
         }
       } catch { /* ignore */ }
     })();

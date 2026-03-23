@@ -55,10 +55,12 @@ impl PtyManager {
         let home = std::env::var("HOME").unwrap_or_else(|_| format!("/Users/{}", user));
 
         let (program, args): (String, Vec<String>) = if let Some(command) = command {
-            let parts: Vec<&str> = command.split_whitespace().collect();
-            let prog = parts[0].to_string();
-            let cmd_args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
-            (prog, cmd_args)
+            // Wrap in a login shell so the user's PATH (Homebrew, npm, nvm, etc.) is available
+            (shell.clone(), vec![
+                "-l".to_string(),
+                "-c".to_string(),
+                format!("exec {}", command),
+            ])
         } else {
             ("/usr/bin/login".to_string(), vec![
                 "-fpl".to_string(),
