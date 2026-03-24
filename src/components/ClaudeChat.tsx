@@ -60,7 +60,7 @@ export default function ClaudeChat({ projectId, visible = true }: ClaudeChatProp
 
   if (hasApiKey === null) {
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="bg-codex-bg">
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="bg-codex-bg">
         <div className="text-codex-text-secondary text-sm">Loading...</div>
       </div>
     );
@@ -68,7 +68,7 @@ export default function ClaudeChat({ projectId, visible = true }: ClaudeChatProp
 
   if (!hasApiKey) {
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="bg-codex-bg">
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="bg-codex-bg">
         <div className="text-center max-w-md px-6">
           <div className="mb-4">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" className="text-codex-text-muted mx-auto">
@@ -89,7 +89,7 @@ export default function ClaudeChat({ projectId, visible = true }: ClaudeChatProp
 
   if (!launched) {
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="bg-codex-bg">
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="bg-codex-bg">
         <div className="text-center max-w-md px-6">
           <div className="mb-4">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" className="text-[#d4a27f] mx-auto">

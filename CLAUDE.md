@@ -41,5 +41,15 @@ Use `<CopyButton text={content} />` for copy-to-clipboard actions. The component
 - SSL: `verify=False` in frozen builds only (trusted first-party APIs)
 
 ### Terminal Sessions
-- Claude Code tab keeps its terminal session alive when switching tabs (rendered with `display: none` instead of unmounting)
+- Claude Code tab keeps its terminal session alive when switching tabs
+- The claude tab container in ProjectView MUST use `display: 'flex'` (not `'block'`) when active, with `flexDirection: 'column'`, `position: 'relative'`, `minHeight: 0`, `overflow: 'hidden'`
+- ClaudeChat non-launched states MUST use `flex: 1` (not `height: 100%`) to fill the flex parent
+- ClaudeChat launched state uses `position: absolute; inset: 0` for the terminal — this requires the parent to have `position: relative` and a computed height from flex
 - Folder must be selected before launching a Claude session
+
+### MarkdownRenderer
+- Uses react-markdown v10 + remark-gfm + react-syntax-highlighter (Prism / vscDarkPlus)
+- **CRITICAL**: Do NOT use `node?.position` to detect inline vs block code — unreliable in v10
+- **CORRECT pattern**: Override `pre` to `return <>{children}</>`, then in `code` check if `text.includes('\n') || !!language` to detect block code
+- Use inline `style={{}}` props for all visual properties (not Tailwind classes) — avoids Tailwind preflight specificity conflicts
+- All heading levels use distinct colors: h1 `#e6edf3`, h2 `#79c0ff` + left border, h3 `#d2a8ff`, h4 `#ffa657`

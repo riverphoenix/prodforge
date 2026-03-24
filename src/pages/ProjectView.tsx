@@ -224,7 +224,7 @@ export default function ProjectView({ projectId, activeTab, onTabChange, initial
           <AgentsPage projectId={projectId} />
         )}
 
-        <div style={{ display: activeTab === 'claude' ? 'block' : 'none', flex: 1, position: 'relative', minHeight: 0 }}>
+        <div style={{ display: activeTab === 'claude' ? 'flex' : 'none', flex: 1, flexDirection: 'column', position: 'relative', minHeight: 0, overflow: 'hidden' }}>
           <ClaudeChat projectId={projectId} visible={activeTab === 'claude'} />
         </div>
 
