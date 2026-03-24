@@ -393,21 +393,6 @@ export default function FrameworkGenerator({
         throw new Error('No content received from stream');
       }
 
-      // Auto-save to outputs library
-      try {
-        await frameworkOutputsAPI.create(
-          projectId,
-          frameworkId,
-          framework.category,
-          outputName || `${framework.name} - ${new Date().toLocaleDateString()}`,
-          userPrompt,
-          selectedDocIds,
-          streamedContent,
-          'markdown'
-        );
-      } catch (saveErr) {
-        console.error('Auto-save to outputs failed:', saveErr);
-      }
 
     } catch (err) {
       // Ignore abort errors (user cancelled)

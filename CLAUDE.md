@@ -43,8 +43,9 @@ Use `<CopyButton text={content} />` for copy-to-clipboard actions. The component
 ### Terminal Sessions
 - Claude Code tab keeps its terminal session alive when switching tabs
 - The claude tab container in ProjectView MUST use `display: 'flex'` (not `'block'`) when active, with `flexDirection: 'column'`, `position: 'relative'`, `minHeight: 0`, `overflow: 'hidden'`
-- ClaudeChat non-launched states MUST use `flex: 1` (not `height: 100%`) to fill the flex parent
-- ClaudeChat launched state uses `position: absolute; inset: 0` for the terminal — this requires the parent to have `position: relative` and a computed height from flex
+- ClaudeChat ALL states MUST use `flex: 1` (never `position: absolute` or `height: 100%`) as the root element — absolute positioning removes it from flex flow, collapsing the parent
+- ClaudeChat launched state: root is `flex:1; display:flex; flexDirection:column; overflow:hidden; minHeight:0`
+- Inside ClaudeChat launched: the TerminalView wrapper uses `flex:1; position:relative; minHeight:0`, and TerminalView itself uses `position:absolute; inset:0` — this is correct because the wrapper has explicit `position:relative`
 - Folder must be selected before launching a Claude session
 
 ### MarkdownRenderer
