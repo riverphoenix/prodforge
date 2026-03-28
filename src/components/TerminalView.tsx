@@ -67,12 +67,16 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
     term.loadAddon(webLinksAddon);
     term.open(terminalRef.current);
 
-    // Fit after layout settles: rAF ensures we're past the first paint,
-    // then retry at 150ms and 400ms to catch slow layout resolution
+    // Focus immediately so keystrokes work without needing to click first
+    term.focus();
+
+    // Fit after layout settles, re-focusing at each point so the textarea
+    // stays as the active element even if something else steals focus
     requestAnimationFrame(() => {
       fitAddon.fit();
-      setTimeout(() => fitAddon.fit(), 150);
-      setTimeout(() => fitAddon.fit(), 400);
+      term.focus();
+      setTimeout(() => { fitAddon.fit(); term.focus(); }, 200);
+      setTimeout(() => { fitAddon.fit(); term.focus(); }, 600);
     });
 
     xtermRef.current = term;
@@ -80,10 +84,9 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
 
     const initPty = async () => {
       try {
-        // Re-fit just before reading cols/rows so PTY gets real dimensions
         fitAddon.fit();
-        const cols = term.cols;
-        const rows = term.rows;
+        const cols = term.cols || 80;
+        const rows = term.rows || 24;
         const workingDir = cwd || undefined;
 
         const sid = externalSessionId || await ptyAPI.create(cols, rows, workingDir, command);
@@ -99,8 +102,8 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
         unlistenRef.current = unlisten;
 
         setReady(true);
-        // Final fit + focus after PTY is ready
-        setTimeout(() => { fitAddon.fit(); term.focus(); }, 100);
+        // Focus again after PTY output starts arriving
+        setTimeout(() => { fitAddon.fit(); term.focus(); }, 150);
       } catch (err) {
         term.writeln(`\x1b[31mFailed to create terminal session: ${err}\x1b[0m`);
       }
