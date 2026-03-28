@@ -661,8 +661,8 @@ function App() {
         isHome={currentView === 'welcome'}
       />
 
-      {/* Main area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+      {/* Main area — position:relative is the containing block for ClaudeChat's position:absolute terminal */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', position: 'relative' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
           {currentView === 'project' && currentProjectId ? (
             <ProjectView

@@ -67,13 +67,21 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
     term.loadAddon(webLinksAddon);
     term.open(terminalRef.current);
 
-    setTimeout(() => fitAddon.fit(), 50);
+    // Fit after layout settles: rAF ensures we're past the first paint,
+    // then retry at 150ms and 400ms to catch slow layout resolution
+    requestAnimationFrame(() => {
+      fitAddon.fit();
+      setTimeout(() => fitAddon.fit(), 150);
+      setTimeout(() => fitAddon.fit(), 400);
+    });
 
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
     const initPty = async () => {
       try {
+        // Re-fit just before reading cols/rows so PTY gets real dimensions
+        fitAddon.fit();
         const cols = term.cols;
         const rows = term.rows;
         const workingDir = cwd || undefined;
@@ -91,7 +99,8 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
         unlistenRef.current = unlisten;
 
         setReady(true);
-        setTimeout(() => term.focus(), 150);
+        // Final fit + focus after PTY is ready
+        setTimeout(() => { fitAddon.fit(); term.focus(); }, 100);
       } catch (err) {
         term.writeln(`\x1b[31mFailed to create terminal session: ${err}\x1b[0m`);
       }

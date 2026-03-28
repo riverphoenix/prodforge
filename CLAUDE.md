@@ -43,9 +43,10 @@ Use `<CopyButton text={content} />` for copy-to-clipboard actions. The component
 ### Terminal Sessions
 - Claude Code tab keeps its terminal session alive when switching tabs
 - The claude tab container in ProjectView MUST use `display: 'flex'` (not `'block'`) when active, with `flexDirection: 'column'`, `position: 'relative'`, `minHeight: 0`, `overflow: 'hidden'`
-- ClaudeChat ALL states MUST use `flex: 1` (never `position: absolute` or `height: 100%`) as the root element — absolute positioning removes it from flex flow, collapsing the parent
-- ClaudeChat launched state: root is `flex:1; display:flex; flexDirection:column; overflow:hidden; minHeight:0`
-- Inside ClaudeChat launched: the TerminalView wrapper uses `flex:1; position:relative; minHeight:0`, and TerminalView itself uses `position:absolute; inset:0` — this is correct because the wrapper has explicit `position:relative`
+- App.tsx main area div (to the right of ActivityBar) MUST have `position: 'relative'` — this is the containing block for ClaudeChat's absolute positioning
+- ClaudeChat launched root: `position:'absolute'; inset:0; zIndex:10` — fills the main area with real pixel dimensions that xterm.js can read immediately
+- Inside ClaudeChat launched: inner div uses `flex:1; position:'relative'; minHeight:0`, TerminalView uses `position:absolute; inset:0`
+- Do NOT use `flex:1` + `height:'100%'` for the terminal — CSS `height:100%` does not reliably resolve against a `flex:1` parent without an explicit pixel height anchor (WebKit limitation)
 - Folder must be selected before launching a Claude session
 
 ### MarkdownRenderer

@@ -129,9 +129,11 @@ export default function ClaudeChat({ projectId, visible = true }: ClaudeChatProp
     );
   }
 
-  // Launched state: flex:1 so it's a proper flex item in the parent column
+  // Launched state — position:absolute fills the nearest positioned ancestor (App.tsx main area),
+  // giving xterm.js real pixel dimensions immediately. The inner wrapper is position:relative
+  // so TerminalView's own position:absolute;inset:0 resolves correctly.
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }} className="bg-codex-bg">
+    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', zIndex: 10 }} className="bg-codex-bg">
       <div className="flex items-center gap-2 px-3 flex-shrink-0" style={{ height: '28px', borderBottom: '1px solid #21262d', backgroundColor: '#181818' }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-[#d4a27f]">
           <path d="M13.83 1.5h3.84L24 22.5h-3.84l-6.33-21zm-7.5 0H2.49L8.82 22.5h3.84L6.33 1.5z"/>
