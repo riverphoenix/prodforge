@@ -163,11 +163,7 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
     // ── Primary input path (works when xterm's textarea gets focus, e.g. in dev) ──
     term.onData((data) => {
       if (sessionIdRef.current) {
-        ptyAPI.write(sessionIdRef.current, data).catch((err) => {
-          term.writeln(`\x1b[31m[pty write error] ${err}\x1b[0m`);
-        });
-      } else {
-        term.writeln(`\x1b[33m[no session — key dropped]\x1b[0m`);
+        ptyAPI.write(sessionIdRef.current, data).catch(() => {});
       }
     });
 

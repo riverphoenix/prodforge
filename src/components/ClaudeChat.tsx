@@ -12,7 +12,6 @@ export default function ClaudeChat({ projectId, visible = true }: ClaudeChatProp
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [launched, setLaunched] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const prevProjectId = useRef(projectId);
 
   useEffect(() => {
@@ -31,7 +30,6 @@ export default function ClaudeChat({ projectId, visible = true }: ClaudeChatProp
     if (prevProjectId.current !== projectId) {
       prevProjectId.current = projectId;
       setLaunched(false);
-      setSessionId(null);
       setSelectedFolder(null);
     }
   }, [projectId]);
@@ -49,13 +47,8 @@ export default function ClaudeChat({ projectId, visible = true }: ClaudeChatProp
     setLaunched(true);
   };
 
-  const handleSessionCreated = (sid: string) => {
-    setSessionId(sid);
-  };
-
   const handleRestart = () => {
     setLaunched(false);
-    setSessionId(null);
   };
 
   if (hasApiKey === null) {
@@ -155,8 +148,6 @@ export default function ClaudeChat({ projectId, visible = true }: ClaudeChatProp
           projectId={projectId}
           cwd={selectedFolder || undefined}
           command="claude"
-          sessionId={sessionId || undefined}
-          onSessionCreated={handleSessionCreated}
           visible={visible}
         />
       </div>
