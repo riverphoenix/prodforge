@@ -5,6 +5,11 @@ mod sidecar;
 use commands::*;
 use tauri::Manager;
 
+#[tauri::command]
+fn open_devtools(window: tauri::WebviewWindow) {
+    window.open_devtools();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -240,6 +245,7 @@ pub fn run() {
             get_skill_usage_analytics,
             open_full_disk_access_settings,
             get_app_executable_path,
+            open_devtools,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

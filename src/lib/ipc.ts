@@ -1271,3 +1271,9 @@ export const schedulerExecutionAPI = {
     });
   },
 };
+
+export const devtoolsAPI = {
+  async open(): Promise<void> {
+    return invoke("open_devtools");
+  },
+};

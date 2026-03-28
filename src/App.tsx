@@ -5,7 +5,7 @@ import ThreadsPanel from './components/ThreadsPanel';
 import ProjectView from './pages/ProjectView';
 import Settings from './pages/Settings';
 import ResizableDivider from './components/ResizableDivider';
-import { projectsAPI, conversationsAPI, frameworkDefsAPI, savedPromptsAPI, frameworkOutputsAPI, foldersAPI, settingsAPI } from './lib/ipc';
+import { projectsAPI, conversationsAPI, frameworkDefsAPI, savedPromptsAPI, frameworkOutputsAPI, foldersAPI, settingsAPI, devtoolsAPI } from './lib/ipc';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import CommandPalette from './components/CommandPalette';
 import BottomPanel from './components/BottomPanel';
@@ -110,6 +110,18 @@ function App() {
   useEffect(() => {
     applyTheme(getThemeById(currentTheme));
   }, [currentTheme]);
+
+  // Cmd+Opt+I — open WebKit inspector in production builds
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.altKey && e.key === 'i') {
+        e.preventDefault();
+        devtoolsAPI.open().catch(() => {});
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, []);
 
   useEffect(() => {
     loadRecentChats();

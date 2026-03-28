@@ -196,14 +196,12 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
     initPty();
 
     // ── Track whether terminal area is the intended keyboard target ──
-    const handleTermMouseDown = () => {
-      terminalActiveRef.current = true;
-      term.focus(); // still attempt xterm focus for cursor rendering
-    };
-    terminalRef.current.addEventListener('mousedown', handleTermMouseDown);
-
+    // Use capture phase so xterm's internal stopPropagation can't block this.
     const handleDocMouseDown = (e: MouseEvent) => {
-      if (!terminalRef.current?.contains(e.target as Node)) {
+      if (terminalRef.current?.contains(e.target as Node)) {
+        terminalActiveRef.current = true;
+        term.focus();
+      } else {
         terminalActiveRef.current = false;
       }
     };
@@ -265,14 +263,12 @@ export default function TerminalView({ projectId, cwd, command, sessionId: exter
     });
     if (terminalRef.current) resizeObserver.observe(terminalRef.current);
 
-    const containerEl = terminalRef.current;
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('keydown', handleFallbackKeyDown, true);
       window.removeEventListener('paste', handlePaste, true);
       document.removeEventListener('mousedown', handleDocMouseDown, true);
       resizeObserver.disconnect();
-      containerEl?.removeEventListener('mousedown', handleTermMouseDown);
       if (unlistenRef.current) unlistenRef.current();
       if (sessionIdRef.current && !externalSessionId) {
         ptyAPI.close(sessionIdRef.current).catch(() => {});
