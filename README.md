@@ -33,8 +33,6 @@ ProdForge is a native desktop app that combines AI-driven frameworks, autonomous
 - **Context Engine** — Upload PDFs, URLs, and Google Docs as AI context for every conversation and generation.
 - **File Explorer** — Hierarchical folders with Monaco code editor.
 - **Outputs Library** — Save, search, edit inline, and export generated frameworks.
-- **Git Versioning** — Auto-commit every output with diff viewer and rollback.
-- **Jira & Notion Export** — Push outputs directly to external tools.
 - **Marketplace Export/Import** — Export frameworks, prompts, skills, and agents as portable `.md` files with YAML frontmatter. Import with conflict detection and resolution.
 - **Analytics Dashboard** — Token usage trends, cost breakdowns, agent performance, CSV export.
 - **Tracing** — Hierarchical span recording with timeline visualization for all executions.
